@@ -1,12 +1,12 @@
 module cordic #(
-    parameter ITERATIONS = 32, //quantidade de iterações
+    parameter ITERATIONS = 16, //quantidade de iterações
     parameter WIDTH = 32 //tamanho dos dados de entrada e saída
 )(
     input clk,
     input rst,
     input enable,
-    input signed [1:0] mode_op,
-    input signed [1:0] mode_coord, 
+    input mode_op,
+    input [1:0] mode_coord, 
     input signed [WIDTH-1:0] x_in,
     input signed [WIDTH-1:0] y_in,
     input signed [WIDTH-1:0] z_in,
@@ -16,52 +16,49 @@ module cordic #(
     output reg valid
 );
 
+    localparam FRACTIONAL_BITS = 16; //16 bits fracionários para Q16.16
+
     //MODO COORDENADA
-    localparam  signed [1:0] CIRCULAR = 2'b01, //1 para Circular
-                signed [1:0] LINEAR = 2'b00, //0 para Linear
-                signed [1:0] HYPERBOLIC = 2'b11; //-1 para Hiperbólico
+    localparam  CIRCULAR = 2'b01, //1 para Circular
+                LINEAR = 2'b00, //0 para Linear
+                HYPERBOLIC = 2'b11; //-1 para Hiperbólico
 
     //MODO OPERAÇÃO 
-    localparam  signed [1:0] ROTATION = 2'b00, //0 para Rotação
-                signed [1:0] VECTORING = 2'b01; //1 para Vetorização
+    localparam  ROTATION = 1'b0, //0 para Rotação
+                VECTORING = 1'b1; //1 para Vetorização
 
     //ESTADOS
-    localparam  [2:0] IDLE = 3'b000,
-                [2:0] INITIALIZE = 3'b001,
-                [2:0] ITERATE = 3'b010,
-                [2:0] FINALIZE = 3'b011,
-                [2:0] DONE = 3'b100;
+    localparam  IDLE = 3'b000,
+ //               INITIALIZE = 3'b001,
+                CALCULATE = 3'b010,
+                UPDATE = 3'b011,
+                ITERATE = 3'b100,
+                FINALIZE = 3'b101,
+                DONE = 3'b110;
 
-    localparam signed [WIDTH-1:0] K_CIRCULAR_FIXED;  // 1.64676
-    localparam signed [WIDTH-1:0] K_LINEAR_FIXED;    // 1.0
-    localparam signed [WIDTH-1:0] K_HYPERBOLIC_FIXED; // 0.82816
+    localparam K_CIRCULAR_FIXED   = 32'd107936; // 1.64676 * 2^16
+    localparam K_LINEAR_FIXED     = 32'd65536;  // 1.0 * 2^16
+    localparam K_HYPERBOLIC_FIXED = 32'd54275;  // 0.82816 * 2^16
 
     reg [2:0] state, next_state;
-    reg [$clog2(ITERATIONS):0] iter_counter; 
-    reg signed [WIDTH-1:0] reg_X, reg_Y, reg_Z, next_X, next_Y, next_Z, shift_X, shift_Y;
+    reg [$clog2(ITERATIONS)-1:0] iter_counter; 
+    reg signed [WIDTH-1:0] reg_X, reg_Y, reg_Z, next_X, next_Y, next_Z;
+    reg signed [WIDTH-1:0] shift_X, shift_Y;
     reg signed [WIDTH-1:0] alpha;
-    reg [0:0] sigma; // Sinal de direção: 0 para -1, 1 para +1
-    reg hyperbolic_repeat; // Sinal de controle para repetição de iteração no modo hiperbólico
+    reg sigma; // Sinal de direção: 0 para -1, 1 para +1
     reg hyperbolic_4, hyperbolic_13; // Sinais de controle para iterações específicas no modo hiperbólico
+    reg signed [2*WIDTH-1:0] mult_x, mult_y; // Variáveis para multiplicação
 
-
-    initial begin
-        hyperbolic_4 = 1'b1; // Inicializa o sinal de iteração 4 como verdadeiro
-        hyperbolic_13 = 1'b1; // Inicializa o sinal de iteração 13 como verdadeiro
-        valid = 1'b0; // Inicializa o sinal de saída como inválido
-    end
 
     //Lógica para definir a direção da rotação ou vetorização
     always @(*) begin
         if (mode_op == ROTATION) begin
             if (reg_Z[WIDTH-1] == 1'b0) begin //testa se Z é positivo
-                sigma = 1'b1; //1 para +1 
+                sigma = 1'b1; //1 para +1
             end else begin
                 sigma = 1'b0; //0 para -1
             end
-        end 
-
-        if (mode_op == VECTORING) begin
+        end else begin //modo vetorização
             if (reg_Y[WIDTH-1] == 1'b0) begin //testa se Y é positivo
                 sigma = 1'b0; //0 para -1
             end else begin
@@ -73,36 +70,95 @@ module cordic #(
     //Lógica para definir o valor de alpha baseado no modo de coordenada
     always @(*) begin
         case (mode_coord)
-            CIRCULAR: begin
-                alpha = atan_table[iter_counter]; // mode_coord = 1: alpha = atan(2^-j)
+            CIRCULAR: begin // mode_coord = 1: alpha = atan(2^-j)
+                case (iter_counter)
+                    0:  alpha <= 32'd51472;   // atan(2^0) = 0.785398...
+                    1:  alpha <= 32'd30386;   // atan(2^-1) = 0.463647...
+                    2:  alpha <= 32'd16053;   // atan(2^-2) = 0.244978...
+                    3:  alpha <= 32'd8140;    // atan(2^-3) = 0.124354...
+                    4:  alpha <= 32'd4090;    // atan(2^-4) = 0.062418...
+                    5:  alpha <= 32'd2047;    // atan(2^-5) = 0.031239...
+                    6:  alpha <= 32'd1023;    // atan(2^-6) = 0.015620...
+                    7:  alpha <= 32'd511;     // atan(2^-7) = 0.007810...
+                    8:  alpha <= 32'd255;     // atan(2^-8) = 0.003906...
+                    9:  alpha <= 32'd127;     // atan(2^-9) = 0.001953...
+                    10: alpha <= 32'd63;      // atan(2^-10) = 0.000976...
+                    11: alpha <= 32'd31;      // atan(2^-11) = 0.000488...
+                    12: alpha <= 32'd15;      // atan(2^-12) = 0.000244...
+                    13: alpha <= 32'd7;       // atan(2^-13) = 0.000122...
+                    14: alpha <= 32'd3;       // atan(2^-14) = 0.000061...
+                    15: alpha <= 32'd1;       // atan(2^-15) = 0.000030...
+                    default: alpha <= 0; // Para j >= FRACTIONAL_BITS (16), 2^-j é 0 em Q16.16, então atan(2^-j) também é 0.
+                endcase
             end
-            LINEAR: begin
-                alpha = ; // mode_coord = 0: alpha = 2^-j
+            LINEAR: begin // mode_coord = 0: alpha = 2^-j
+                case (iter_counter)
+                    0 : alpha <= 32'd65536; // 2^0 = 1.0 em Q16.16
+                    1 : alpha <= 32'd32768; // 2^-1 = 0.5 em Q16.16
+                    2 : alpha <= 32'd16384; // 2^-2 = 0.25 em Q16.16
+                    3 : alpha <= 32'd8192;  // 2^-3 = 0.125 em Q16.16
+                    4 : alpha <= 32'd4096;  // 2^-4 = 0.0625 em Q16.16
+                    5 : alpha <= 32'd2048;  // 2^-5 = 0.03125 em Q16.16
+                    6 : alpha <= 32'd1024;  // 2^-6 = 0.015625 em Q16.16
+                    7 : alpha <= 32'd512;   // 2^-7 = 0.007812 em Q16.16
+                    8 : alpha <= 32'd256;   // 2^-8 = 0.003906 em Q16.16
+                    9 : alpha <= 32'd128;   // 2^-9 = 0.001953 em Q16.16
+                    10: alpha <= 32'd64;    // 2^-10 = 0.000976 em Q16.16
+                    11: alpha <= 32'd32;    // 2^-11 = 0.000488 em Q16.16
+                    12: alpha <= 32'd16;    // 2^-12 = 0.000244 em Q16.16
+                    13: alpha <= 32'd8;     // 2^-13 = 0.000122 em Q16.16
+                    14: alpha <= 32'd4;     // 2^-14 = 0.000061 em Q16.16
+                    15: alpha <= 32'd2;     // 2^-15 = 0.000030 em Q16.16
+                    default: alpha <= 0;    // Para j >= FRACTIONAL_BITS (16), 2^-j é 0 em Q16.16, então atan(2^-j) também é 0.
+                endcase
             end
-            HYPERBOLIC: begin
-                alpha = ; // mode_coord = -1: alpha = tanh_inv(2^-j)
+
+            HYPERBOLIC: begin // mode_coord = -1: alpha = tanh_inv(2^-j)
+                case (iter_counter)
+                    1 : alpha <= 32'd35999;   // tanh_inv(2^-1) = 0.549306...
+                    2 : alpha <= 32'd16743;   // tanh_inv(2^-2) = 0.255412...
+                    3 : alpha <= 32'd8234;    // tanh_inv(2^-3) = 0.125657...
+                    4 : alpha <= 32'd4104;    // tanh_inv(2^-4) = 0.062425... (Ponto de repetição)
+                    5 : alpha <= 32'd2050;    // tanh_inv(2^-5) = 0.031260...
+                    6 : alpha <= 32'd1024;    // tanh_inv(2^-6) = 0.015628...   
+                    7 : alpha <= 32'd512;     // tanh_inv(2^-7) = 0.007812...
+                    8 : alpha <= 32'd256;     // tanh_inv(2^-8) = 0.003906...
+                    9 : alpha <= 32'd128;     // tanh_inv(2^-9) = 0.001953...
+                    10: alpha <= 32'd64;      // tanh_inv(2^-10) = 0.000976...
+                    11: alpha <= 32'd32;      // tanh_inv(2^-11) = 0.000488...
+                    12: alpha <= 32'd16;      // tanh_inv(2^-12) = 0.000244...
+                    13: alpha <= 32'd8;       // tanh_inv(2^-13) = 0.000122... // Ponto de repetição
+                    14: alpha <= 32'd4;       // tanh_inv(2^-14) = 0.000061...
+                    15: alpha <= 32'd2;       // tanh_inv(2^-15) = 0.000030...  
+                    default: alpha <= 0; // Para j == 0 ou >= FRACTIONAL_BITS (16) e 2^-j é 0 em Q16.16, então tanh_inv(2^-j) também é 0.
+                endcase
             end
+
             default: begin
-                alpha = 0; // Valor padrão para evitar latch
+                alpha <= 0; // Valor padrão para evitar latch
             end
         endcase
     end
 
-    /* Shift registers*/
+    // Shift registers
     always @(*) begin
-        shift_X <= (iter_counter < WIDTH) ? (reg_X >>> iter_counter) : 0;
-        shift_Y <= (iter_counter < WIDTH) ? (reg_Y >>> iter_counter) : 0;
+        shift_X <= reg_X >>> iter_counter;
+        shift_Y <= reg_Y >>> iter_counter;
     end
 
     //Lógica de transição de estados
     always @(*) begin
         case (state)
             IDLE: 
-                next_state <= (enable) ? INITIALIZE : IDLE;
-            INITIALIZE: 
+                next_state <= (enable) ? CALCULATE : IDLE;
+//            INITIALIZE: 
+//                next_state <= CALCULATE;
+            CALCULATE: 
+                next_state <= UPDATE;
+            UPDATE: 
                 next_state <= ITERATE;
             ITERATE: 
-                next_state <= (iter_counter == ITERATIONS) ? FINALIZE : ITERATE;
+                next_state <= (iter_counter == ITERATIONS-1) ? FINALIZE : CALCULATE;
             FINALIZE: 
                 next_state <= DONE;
             DONE: 
@@ -110,14 +166,6 @@ module cordic #(
             default: 
                 next_state <= IDLE;
         endcase
-    end
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state <= IDLE;
-        end else begin
-            state <= next_state;
-        end
     end
 
     always @(posedge clk or posedge rst) begin
@@ -136,17 +184,16 @@ module cordic #(
             valid <= 0;
             hyperbolic_4 <= 1'b1;
             hyperbolic_13 <= 1'b1;
-
+            mult_x <= 0;
+            mult_y <= 0;
         end else begin
             state <= next_state;
-
             case (state)
-        
                 IDLE: begin
                     iter_counter <= 0;
-                    reg_X <= 0;
-                    reg_Y <= 0;
-                    reg_Z <= 0;
+                    reg_X <= x_in;
+                    reg_Y <= y_in;
+                    reg_Z <= z_in;
                     next_X <= 0;
                     next_Y <= 0;
                     next_Z <= 0;
@@ -154,48 +201,60 @@ module cordic #(
                     y_out <= 0;
                     z_out <= 0;
                     valid <= 0;
+                    hyperbolic_4 <= 1'b1;
+                    hyperbolic_13 <= 1'b1;
+                    mult_x <= 0;
+                    mult_y <= 0;
                 end
-
+/*
                 INITIALIZE: begin
                     reg_X <= x_in;
                     reg_Y <= y_in;
-                    reg_Z <= z_in;
-                    iter_counter <= 0;
-                    valid_out <= 1'b0;
+                    reg_Z <= z_in;    
                 end
-
-                ITERATE: begin
+*/
+                CALCULATE: begin
                     case (mode_coord)
                         //xi+1 = xi − μ σi yi 2^−i
                         //yi+1 = yi + σi xi 2^−i
                         //zi+1 = zi − σi αi
-
                         CIRCULAR: begin // m = 1
-                           
+                            next_X <= reg_X - (sigma ? shift_Y : -shift_Y);
+                            next_Y <= reg_Y + (sigma ? shift_X : -shift_X);
+                            next_Z <= reg_Z - (sigma ? alpha : -alpha);
                         end
 
                         LINEAR: begin // m = 0
-                          
+                            next_X <= reg_X;
+                            next_Y <= reg_Y + (sigma ? shift_X : -shift_X);
+                            next_Z <= reg_Z - (sigma ? alpha : -alpha);
                         end
 
-                        HYPERBOLIC: begin // m = -1                            
-                            
+                        HYPERBOLIC: begin // m = -1
+                            next_X <= reg_X + (sigma ? shift_Y : -shift_Y);
+                            next_Y <= reg_Y + (sigma ? shift_X : -shift_X);
+                            next_Z <= reg_Z - (sigma ? alpha : -alpha);
                         end
 
                         default: begin
-                            next_X = reg_X;
-                            next_Y = reg_Y;
-                            next_Z = reg_Z;
+                            next_X <= reg_X;
+                            next_Y <= reg_Y;
+                            next_Z <= reg_Z;
                         end
                     endcase
+                end
 
+                UPDATE: begin
                     // Atualiza os registros com os novos valores
                     reg_X <= next_X;
                     reg_Y <= next_Y;
                     reg_Z <= next_Z;
+                end
 
+                ITERATE: begin                    
+                    // Incrementa o contador de iterações
                     // No modo hiperbólico, as iterações 4 e 13 são repetidas
-                    if (coord_mode == HYPERBOLIC) begin
+                    if (mode_coord == HYPERBOLIC) begin
                         if (iter_counter==4 && hyperbolic_4)
                             hyperbolic_4 <= 1'b0; // Desativa a repetição após a primeira iteração
                         else if (iter_counter==13 && hyperbolic_13) 
@@ -205,19 +264,24 @@ module cordic #(
                     end else begin                        
                         iter_counter <= iter_counter + 1; // Incrementa o contador normalmente para outros modos
                     end
-
                 end
 
                 FINALIZE: begin
                     case (mode_coord)
                         CIRCULAR: begin
-                            x_out <= (reg_X * K_CIRCULAR_FIXED);
-                            y_out <= (reg_Y * K_CIRCULAR_FIXED);
+                            mult_x = reg_X * K_CIRCULAR_FIXED;
+                            mult_y = reg_Y * K_CIRCULAR_FIXED;
+                            
+                            x_out <= mult_x >>> FRACTIONAL_BITS;
+                            y_out <= mult_y >>> FRACTIONAL_BITS;
                             z_out <= reg_Z;
                         end
                         HYPERBOLIC: begin
-                            x_out <= (reg_X * K_HYPERBOLIC_FIXED);
-                            y_out <= (reg_Y * K_HYPERBOLIC_FIXED);
+                            mult_x = reg_X * K_HYPERBOLIC_FIXED;
+                            mult_y = reg_Y * K_HYPERBOLIC_FIXED;
+
+                            x_out <= mult_x >>> FRACTIONAL_BITS;
+                            y_out <= mult_y >>> FRACTIONAL_BITS;
                             z_out <= reg_Z;
                         end
                         default: begin
@@ -246,6 +310,73 @@ module cordic #(
                     valid <= 0;
                 end
             endcase
+        end
+    end
+    
+endmodule
+
+
+/*
+reg signed [WIDTH-1:0] atan_table_lut [0:ITERATIONS-1];
+    initial begin
+        // Valores calculados com precisão e arredondados para Q16.16
+        // float_val = atan(2.0**(-j))
+        // fixed_val = int(round(float_val * (2**FRACTIONAL_BITS)))
+        atan_table_lut[0]  = 32'd51472;   // atan(2^0) = 0.785398...
+        atan_table_lut[1]  = 32'd30386;   // atan(2^-1) = 0.463647...
+        atan_table_lut[2]  = 32'd16053;   // atan(2^-2) = 0.244978...
+        atan_table_lut[3]  = 32'd8140;    // atan(2^-3) = 0.124354...
+        atan_table_lut[4]  = 32'd4090;    // atan(2^-4) = 0.062418...
+        atan_table_lut[5]  = 32'd2047;    // atan(2^-5) = 0.031239...
+        atan_table_lut[6]  = 32'd1023;    // atan(2^-6) = 0.015620...
+        atan_table_lut[7]  = 32'd511;     // atan(2^-7) = 0.007810...
+        atan_table_lut[8]  = 32'd255;     // atan(2^-8) = 0.003906...
+        atan_table_lut[9]  = 32'd127;     // atan(2^-9) = 0.001953...
+        atan_table_lut[10] = 32'd63;      // atan(2^-10) = 0.000976...
+        atan_table_lut[11] = 32'd31;      // atan(2^-11) = 0.000488...
+        atan_table_lut[12] = 32'd15;      // atan(2^-12) = 0.000244...
+        atan_table_lut[13] = 32'd7;       // atan(2^-13) = 0.000122...
+        atan_table_lut[14] = 32'd3;       // atan(2^-14) = 0.000061...
+        atan_table_lut[15] = 32'd1;       // atan(2^-15) = 0.000030...
+        // Para j >= FRACTIONAL_BITS (16), 2^-j é 0 em Q16.16, então atan(2^-j) também é 0.
+        for (integer i = 16; i < ITERATIONS; i = i + 1) begin
+            atan_table_lut[i] = 0; 
+        end
+    end
+     // LUT de 2^-j para modo LINEAR
+    reg signed [WIDTH-1:0] linear_table_lut [0:ITERATIONS-1];
+    initial begin
+        for (integer i = 0; i < ITERATIONS; i = i + 1) begin
+            if (i < FRACTIONAL_BITS) begin // Enquanto o shift não elimina o 1
+                linear_table_lut[i] = (1 << (FRACTIONAL_BITS - i)); // 2^-j
+            end else begin
+                linear_table_lut[i] = 0; // Se j >= FRACTIONAL_BITS, 2^-j é 0 em Q16.16
+            end
+        end
+    end
+    // LUT de tanh_inv(2^-j) para modo HIPERBÓLICO
+    reg signed [WIDTH-1:0] tanh_inv_table_lut [0:ITERATIONS-1];
+    initial begin
+        // tanh_inv(2^-0) = INF, geralmente não usado. Começa de j=1.
+        tanh_inv_table_lut[0]  = 0; // Para j=0
+        tanh_inv_table_lut[1]  = 32'd35999;   // tanh_inv(2^-1) = 0.549306...
+        tanh_inv_table_lut[2]  = 32'd16743;   // tanh_inv(2^-2) = 0.255412...
+        tanh_inv_table_lut[3]  = 32'd8234;    // tanh_inv(2^-3) = 0.125657...
+        tanh_inv_table_lut[4]  = 32'd4104;    // tanh_inv(2^-4) = 0.062581... (Ponto de repetição)
+        tanh_inv_table_lut[5]  = 32'd2050;    // tanh_inv(2^-5) = 0.031260...
+        tanh_inv_table_lut[6]  = 32'd1024;    // tanh_inv(2^-6) = 0.015628...
+        tanh_inv_table_lut[7]  = 32'd512;     // tanh_inv(2^-7) = 0.007812...
+        tanh_inv_table_lut[8]  = 32'd256;     // tanh_inv(2^-8) = 0.003906...
+        tanh_inv_table_lut[9]  = 32'd128;     // tanh_inv(2^-9) = 0.001953...
+        tanh_inv_table_lut[10] = 32'd64;      // tanh_inv(2^-10) = 0.000976...
+        tanh_inv_table_lut[11] = 32'd32;      // tanh_inv(2^-11) = 0.000488...
+        tanh_inv_table_lut[12] = 32'd16;      // tanh_inv(2^-12) = 0.000244...
+        tanh_inv_table_lut[13] = 32'd8;       // tanh_inv(2^-13) = 0.000122... (Ponto de repetição)
+        tanh_inv_table_lut[14] = 32'd4;       // tanh_inv(2^-14) = 0.000061...
+        tanh_inv_table_lut[15] = 32'd2;       // tanh_inv(2^-15) = 0.000030...
+        // Para j >= FRACTIONAL_BITS (16), 2^-j é 0 em Q16.16, então tanh_inv(2^-j) também é 0.
+        for (integer i = 16; i < ITERATIONS; i = i + 1) begin
+            tanh_inv_table_lut[i] = 0; 
         end
     end
 
@@ -285,6 +416,4 @@ module cordic #(
       atan_table[29] = 32'b00000000000000000000000000000001;
       atan_table[30] = 32'b00000000000000000000000000000000;
    end
-
-
-endmodule
+*/
