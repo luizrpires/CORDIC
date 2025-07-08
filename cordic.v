@@ -29,25 +29,25 @@ module cordic #(
 
     //ESTADOS
     localparam  IDLE = 3'b000,
- //               INITIALIZE = 3'b001,
+                INITIALIZE = 3'b001,
                 CALCULATE = 3'b010,
                 UPDATE = 3'b011,
                 ITERATE = 3'b100,
-                FINALIZE = 3'b101,
+                //FINALIZE = 3'b101,
                 DONE = 3'b110;
 
-    localparam K_CIRCULAR_FIXED   = 32'd107936; // 1.64676 * 2^16
-    localparam K_LINEAR_FIXED     = 32'd65536;  // 1.0 * 2^16
-    localparam K_HYPERBOLIC_FIXED = 32'd54275;  // 0.82816 * 2^16
+    //localparam K_CIRCULAR_FIXED   = 32'd107936; // 1.64676 * 2^16
+    //localparam K_LINEAR_FIXED     = 32'd65536;  // 1.0 * 2^16
+    //localparam K_HYPERBOLIC_FIXED = 32'd54275;  // 0.82816 * 2^16
 
     reg [2:0] state, next_state;
     reg [$clog2(ITERATIONS)-1:0] iter_counter; 
     reg signed [WIDTH-1:0] reg_X, reg_Y, reg_Z, next_X, next_Y, next_Z;
     reg signed [WIDTH-1:0] shift_X, shift_Y;
     reg signed [WIDTH-1:0] alpha;
-    reg sigma; // Sinal de direção: 0 para -1, 1 para +1
+    reg sigma; // Sinal de direção: 0 para sinal neg, 1 para sinal pos
     reg hyperbolic_4, hyperbolic_13; // Sinais de controle para iterações específicas no modo hiperbólico
-    reg signed [2*WIDTH-1:0] mult_x, mult_y; // Variáveis para multiplicação
+    //reg signed [2*WIDTH-1:0] mult_x, mult_y; // Variáveis para multiplicação
 
 
     //Lógica para definir a direção da rotação ou vetorização
@@ -150,17 +150,15 @@ module cordic #(
     always @(*) begin
         case (state)
             IDLE: 
-                next_state <= (enable) ? CALCULATE : IDLE;
-//            INITIALIZE: 
-//                next_state <= CALCULATE;
+                next_state <= (enable) ? INITIALIZE : IDLE;
+            INITIALIZE: 
+                next_state <= CALCULATE;
             CALCULATE: 
                 next_state <= UPDATE;
             UPDATE: 
                 next_state <= ITERATE;
             ITERATE: 
-                next_state <= (iter_counter == ITERATIONS-1) ? FINALIZE : CALCULATE;
-            FINALIZE: 
-                next_state <= DONE;
+                next_state <= (iter_counter == ITERATIONS-1) ? DONE : CALCULATE;
             DONE: 
                 next_state <= IDLE;
             default: 
@@ -184,16 +182,14 @@ module cordic #(
             valid <= 0;
             hyperbolic_4 <= 1'b1;
             hyperbolic_13 <= 1'b1;
-            mult_x <= 0;
-            mult_y <= 0;
         end else begin
             state <= next_state;
             case (state)
                 IDLE: begin
-                    iter_counter <= 0;
-                    reg_X <= x_in;
-                    reg_Y <= y_in;
-                    reg_Z <= z_in;
+                    iter_counter <= (mode_coord == HYPERBOLIC) ? 1 : 0; // Inicia o contador de iterações em 1 para hiperbólico, 0 para outros modos
+                    reg_X <= 0;
+                    reg_Y <= 0;
+                    reg_Z <= 0;
                     next_X <= 0;
                     next_Y <= 0;
                     next_Z <= 0;
@@ -203,16 +199,14 @@ module cordic #(
                     valid <= 0;
                     hyperbolic_4 <= 1'b1;
                     hyperbolic_13 <= 1'b1;
-                    mult_x <= 0;
-                    mult_y <= 0;
                 end
-/*
+
                 INITIALIZE: begin
                     reg_X <= x_in;
                     reg_Y <= y_in;
-                    reg_Z <= z_in;    
+                    reg_Z <= z_in;
                 end
-*/
+
                 CALCULATE: begin
                     case (mode_coord)
                         //xi+1 = xi − μ σi yi 2^−i
@@ -266,33 +260,10 @@ module cordic #(
                     end
                 end
 
-                FINALIZE: begin
-                    case (mode_coord)
-                        CIRCULAR: begin
-                            mult_x = reg_X * K_CIRCULAR_FIXED;
-                            mult_y = reg_Y * K_CIRCULAR_FIXED;
-                            
-                            x_out <= mult_x >>> FRACTIONAL_BITS;
-                            y_out <= mult_y >>> FRACTIONAL_BITS;
-                            z_out <= reg_Z;
-                        end
-                        HYPERBOLIC: begin
-                            mult_x = reg_X * K_HYPERBOLIC_FIXED;
-                            mult_y = reg_Y * K_HYPERBOLIC_FIXED;
-
-                            x_out <= mult_x >>> FRACTIONAL_BITS;
-                            y_out <= mult_y >>> FRACTIONAL_BITS;
-                            z_out <= reg_Z;
-                        end
-                        default: begin
-                            x_out <= reg_X;
-                            y_out <= reg_Y;
-                            z_out <= reg_Z;
-                        end
-                    endcase
-                end
-
                 DONE: begin
+                    x_out <= reg_X;
+                    y_out <= reg_Y;
+                    z_out <= reg_Z;
                     valid <= 1'b1; // Indica que a saída é válida
                 end
 
@@ -416,4 +387,30 @@ reg signed [WIDTH-1:0] atan_table_lut [0:ITERATIONS-1];
       atan_table[29] = 32'b00000000000000000000000000000001;
       atan_table[30] = 32'b00000000000000000000000000000000;
    end
+
+    FINALIZE: begin
+        case (mode_coord)
+            CIRCULAR: begin                            
+                mult_x = reg_X * K_CIRCULAR_FIXED;
+                mult_y = reg_Y * K_CIRCULAR_FIXED;
+                
+                x_out <= mult_x >>> FRACTIONAL_BITS;
+                y_out <=x_out <= mult_y >>> FRACTIONAL_BITS;
+                z_out <= reg_Z;                            
+            end
+            HYPERBOLIC: begin                            
+                mult_x = reg_X * K_HYPERBOLIC_FIXED;
+                mult_y = reg_Y * K_HYPERBOLIC_FIXED;
+
+                x_out <= mult_x >>> FRACTIONAL_BITS;
+                y_out <= mult_y >>> FRACTIONAL_BITS;
+                z_out <= reg_Z;                            
+            end
+            default: begin
+                x_out <= reg_X;
+                y_out <= reg_Y;
+                z_out <= reg_Z;
+            end
+        endcase
+    end
 */
