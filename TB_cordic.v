@@ -58,8 +58,8 @@ module tb_cordic;
         clk = 0;
         rst = 1;
         enable = 0;
-        mode_op = ROTATION;
         mode_coord = LINEAR;
+        mode_op = ROTATION;
         x_in = 0;
         y_in = 0;
         z_in = 0;
@@ -67,12 +67,14 @@ module tb_cordic;
         #20;
         rst = 0;
 
-        // Converte para Q16.16
+        //entrada de dados
         temp_x = 5.0;
-        real_to_q16_16(temp_x, x_in);
-        temp_y = 0;
-        real_to_q16_16(temp_y, y_in);
+        temp_y = 0.0;
         temp_z = 1.5;
+        
+        // Converte para Q16.16
+        real_to_q16_16(temp_x, x_in);
+        real_to_q16_16(temp_y, y_in);
         real_to_q16_16(temp_z, z_in);
 
         enable = 1;

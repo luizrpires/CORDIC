@@ -36,14 +36,10 @@ module cordic #(
                 //FINALIZE = 3'b101,
                 DONE = 3'b110;
 
-    //localparam K_CIRCULAR_FIXED   = 32'd107936; // 1.64676 * 2^16
-    //localparam K_LINEAR_FIXED     = 32'd65536;  // 1.0 * 2^16
-    //localparam K_HYPERBOLIC_FIXED = 32'd54275;  // 0.82816 * 2^16
-
     reg [2:0] state, next_state;
     reg [$clog2(ITERATIONS)-1:0] iter_counter; 
     reg signed [WIDTH-1:0] reg_X, reg_Y, reg_Z, next_X, next_Y, next_Z;
-    reg signed [WIDTH-1:0] shift_X, shift_Y;
+    wire signed [WIDTH-1:0] shift_X, shift_Y;
     reg signed [WIDTH-1:0] alpha;
     reg sigma; // Sinal de direção: 0 para sinal neg, 1 para sinal pos
     reg hyperbolic_4, hyperbolic_13; // Sinais de controle para iterações específicas no modo hiperbólico
@@ -141,10 +137,9 @@ module cordic #(
     end
 
     // Shift registers
-    always @(*) begin
-        shift_X <= reg_X >>> iter_counter;
-        shift_Y <= reg_Y >>> iter_counter;
-    end
+    assign shift_X = reg_X >>> iter_counter;
+    assign shift_Y = reg_Y >>> iter_counter;
+
 
     //Lógica de transição de estados
     always @(*) begin
