@@ -1,0 +1,15 @@
+O que foi feito por versão:
+
+-Cordic_serial_V1- TB_cordicV1 --> Modo rotação- circular- feito o teste bench para teste, junto com a tabela de 360º 
+que mostra no resultado os valores no display do valor calculado e do valor referencia da tabela.
+
+Erro: nesta versão os resultados batem até o angulo 99º depois começa a dar erro, o pessoal desenvolvimento estão ciente, 
+que falta a correção dos quadrantes.
+
+-Cordic_serial_V1- TB_cordicV2 --> Modo rotação- circular- melhoria no valor mostrado no display foi incrementado um código 
+para truncar a saída para duas casas decimais.
+
+
+
+
+
