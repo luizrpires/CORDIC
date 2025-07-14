@@ -9,6 +9,31 @@ que falta a correção dos quadrantes.
 -Cordic_serial_V1- TB_cordicV2 --> Modo rotação- circular- melhoria no valor mostrado no display foi incrementado um código 
 para truncar a saída para duas casas decimais.
 
+-Cordic_serial_V1- TB_cordicV3 --> Modo rotação- linear- foi feito um modulo para teste onde peguei valores "max minimo e negativo" 
+para teste. conforme a “Tabela de resultado teste- serial”. Esta dando erro quando o x e negativo
+
+-Cordic_serial_V1- TB_cordicV4 --> Modo rotação- linear- feito uma melhorar com for para 9 teste com valores "max minimo e negativo" 
+para teste. conforme a “Tabela de resultado teste- serial”. Esta dando erro quando o x e negativo
+
+-Cordic_serial_V2- TB_cordicV5 --> Modo rotação- circular- feito o teste bench para teste, o novo codig cordicV2 foi gerado com 
+arrumando os quadrantes
+
+Erro: nesta versão os resultados batem até o angulo 99º depois começa a dar erro, o pessoal desenvolvimento estão ciente, 
+parece que a correção dos quadrantes ainda não funciona corretamente
+
+-Cordic_serial_V3- TB_cordicV5 --> Modo rotação- circular- o Cordic_serial_V3 estava com erro na linha 73 tive que mudar linha 44 para
+wire signed [WIDTH-1:0] alpha; feito o teste bench impleção para imprimir so os erro maior que 0.1 se comparado com a referencia.
+
+Erro: o que no modo rotação circular persiste em graus 106 a 254.
+
+-Cordic_serial_V3- TB_cordicV6 --> Modo rotação hiperbolico- implementação do codigo para test e colhendo alguns resultados.
+
+Erro apresentado esta alto verificar o codigo 
+
+
+
+
+
 
 
 
