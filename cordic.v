@@ -41,7 +41,7 @@ module cordic #(
     reg [$clog2(ITERATIONS)-1:0] iter_counter; 
     reg signed [WIDTH-1:0] reg_X, reg_Y, reg_Z, next_X, next_Y, next_Z, X_out_aux, Y_out_aux, Z_out_aux;
     wire signed [WIDTH-1:0] shift_X, shift_Y;
-    reg signed [WIDTH-1:0] alpha;
+    wire signed [WIDTH-1:0] alpha;
     reg sigma; // Sinal de direção: 0 para sinal neg, 1 para sinal pos
     reg hyperbolic_4, hyperbolic_13; // Sinais de controle para iterações específicas no modo hiperbólico
     reg completed; //Sinal para indicar que o cálculo está concluído
@@ -57,15 +57,15 @@ module cordic #(
     always @(*) begin
         if (mode_op == ROTATION) begin
             if (reg_Z[WIDTH-1] == 1'b0) begin //testa se Z é positivo
-                sigma = 1'b1; //1 para +1
+                sigma <= 1'b1; //1 para +1
             end else begin
-                sigma = 1'b0; //0 para -1
+                sigma <= 1'b0; //0 para -1
             end
         end else begin //modo vetorização
             if (reg_Y[WIDTH-1] == 1'b0) begin //testa se Y é positivo
-                sigma = 1'b0; //0 para -1
+                sigma <= 1'b0; //0 para -1
             end else begin
-                sigma = 1'b1; //1 para +1
+                sigma <= 1'b1; //1 para +1
             end
         end
     end
@@ -87,9 +87,9 @@ module cordic #(
             if (state == FINALIZE) begin
                 if (mode_op == VECTORING) begin
                     if(mode_coord == HYPERBOLIC)begin
-                        mult_x <= (reg_X * K_HYPERBOLIC) >>> FRACTIONAL_BITS;
+                        mult_x <= (reg_X * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS;
                     end else if(mode_coord == CIRCULAR)begin
-                        mult_x <= (reg_X * K_CIRCULAR) >>> FRACTIONAL_BITS;
+                        mult_x <= (reg_X * K_INV_CIRCULAR) >>> FRACTIONAL_BITS;
                     end else
                         mult_x <= 64'b0;
                 end else 
@@ -215,7 +215,7 @@ module cordic #(
                 end
 
                 UPDATE: begin
-                    // Atualiza os registros com os novos valores
+                    // Atualiza os registradores com os novos valores
                     reg_X <= next_X;
                     reg_Y <= next_Y;
                     reg_Z <= next_Z;
@@ -239,29 +239,29 @@ module cordic #(
                         CIRCULAR: begin 
                             if (mode_op == ROTATION) begin
                                 case (quadrante)
-                                    3'b000: begin
-                                        X_out_aux <= reg_X; 
-                                        Y_out_aux <= reg_Y;                             
+                                    3'b000: begin // entre -45° e 45°
+                                        X_out_aux <= reg_X;
+                                        Y_out_aux <= reg_Y;
                                     end
-                                    3'b001: begin
-                                        X_out_aux <= -reg_Y; 
+                                    3'b001: begin // maior que 45° e menor ou igual a 135°
+                                        X_out_aux <= -reg_Y;
                                         Y_out_aux <= reg_X;
                                     end
-                                    3'b010: begin
-                                        X_out_aux <= -reg_X;
-                                        Y_out_aux <= -reg_X;
-                                    end
-                                    3'b011: begin
+                                    3'b010: begin // maior que 135° e menor ou igual a 180° 
                                         X_out_aux <= -reg_X;
                                         Y_out_aux <= -reg_Y;
                                     end
-                                    3'b100: begin
+                                    3'b011: begin // maior que 180° e menor ou igual a 225°
+                                        X_out_aux <= -reg_X;
+                                        Y_out_aux <= -reg_Y;
+                                    end
+                                    3'b100: begin  // maior que 225° e menor ou igual a 315° 
                                         X_out_aux <= reg_Y;
                                         Y_out_aux <= -reg_X;
                                     end
                                     default: begin
-                                        X_out_aux <= reg_X; 
-                                        Y_out_aux <= reg_Y; 
+                                        X_out_aux <= reg_X;
+                                        Y_out_aux <= reg_Y;
                                     end
                                 endcase
                                 Z_out_aux <= reg_Z;
@@ -289,7 +289,7 @@ module cordic #(
                         end
                     endcase
                         
-                    completed <= 1'b1; // Indica que a saída é válida
+                    completed <= 1'b1; // Indica que completou a operação
 
                 end
 

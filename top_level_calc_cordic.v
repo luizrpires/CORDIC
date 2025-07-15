@@ -9,8 +9,8 @@ module top_level_calc_cordic #(
     input signed [WIDTH-1:0] x_in,
     input signed [WIDTH-1:0] y_in,
     input signed [WIDTH-1:0] z_in,
-    output reg signed [WIDTH-1:0] result,
-    output reg done
+    output signed [WIDTH-1:0] result,
+    output done
 );
 
     //MODO COORDENADA
@@ -23,22 +23,22 @@ module top_level_calc_cordic #(
                 VECTORING = 1'b1; //1 para Vetorização
 
     // OPERAÇÕES
-    localparam  SIN      = 4'b0000, //0 para Seno
-                COS      = 4'b0001, //1 para Cosseno
-                TAN      = 4'b0010, //2 para Tangente
-                ATAN     = 4'b0011, //3 para Arco Tangente
-                MAG      = 4'b0100, //4 para Magnitude
-                POLtoREC = 4'b0101, //5 para Conversão Polar para Retangular
-                RECtoPOL = 4'b0110, //6 para Conversão Retangular para Polar
-                MULT     = 4'b0111, //7 para Multiplicação
-                DIV      = 4'b1000, //8 para Divisão
-                SINH     = 4'b1001, //9 para Seno Hiperbólico
-                COSH     = 4'b1010, //10 para Cosseno Hiperbólico
-                ATANH    = 4'b1011, //11 para Arco Tangente Hiperbólico
-                EXP      = 4'b1100, //12 para Exponencial
-                LOG      = 4'b1101, //13 para Logaritmo
-                SQRT     = 4'b1110, //14 para Raiz Quadrada
-                DEFAULT  = 4'b1111; // Padrão/Sem uso
+    localparam  SIN     = 4'b0000, //0 para Seno
+                COS     = 4'b0001, //1 para Cosseno
+                ATAN    = 4'b0010, //2 para Arc Tangente
+                MOD     = 4'b0011, //3 para Módulo/Magnitude
+                MULT    = 4'b0100, //4 para Multiplicação
+                DIV     = 4'b0101, //5 para Divisão
+                SINH    = 4'b0110, //6 para Seno Hiperbólico
+                COSH    = 4'b0111, //7 para Cosseno Hiperbólico
+                ATANH   = 4'b1000, //8 para Arc Tangente Hiperbólico
+                MODH    = 4'b1001, //9 para Módulo Hiperbólico
+                //EXP     = 4'b1010, //10 para Exponencial
+                //LOG     = 4'b1011, //11 para Logaritmo
+                //SQRT    = 4'b1100, //12 para Raiz Quadrada
+                //      = 4'b1101, //13 para 
+                //      = 4'b1110, //14 para 
+                DEFAULT = 4'b1111; // Padrão/Sem uso
 
     
     localparam K_INV_CIRCULAR   = 32'd39797;    // 1 / 1.64676 = 0.6072529350088813 * 2^16
@@ -76,11 +76,12 @@ module top_level_calc_cordic #(
         if (rst) begin
             //mode_coord <= ; // Padrão
             //mode_op    <= ; // Padrão
-            x_aux        <= 32'sb0;
-            y_aux        <= 32'sb0;
-            z_aux        <= 32'sb0;
+            x_aux        <= 32'b0;
+            y_aux        <= 32'b0;
+            z_aux        <= 32'b0;
         end else begin
             case (operation)
+                // CIRCULAR + ROTATION
                 SIN: begin
                     mode_coord <= CIRCULAR;
                     mode_op    <= ROTATION;
@@ -96,23 +97,39 @@ module top_level_calc_cordic #(
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
-                
-                MULT: begin
-                    mode_coord <= LINEAR;
-                    mode_op    <= ROTATION;
+                //////////////////////
+
+                // CIRCULAR + VECTORING
+                ATAN, MOD: begin
+                    mode_coord <= CIRCULAR;
+                    mode_op    <= VECTORING;
                     x_aux      <= x_in;
-                    y_aux      <= 32'sb0;
-                    z_aux      <= z_in;
+                    y_aux      <= y_in;
+                    z_aux      <= 0.0;
                 end
-                
+                ///////////////////////
+
+                // LINEAR + VECTORING
                 DIV: begin
                     mode_coord <= LINEAR;
                     mode_op    <= VECTORING;
                     x_aux      <= x_in; //divisor
                     y_aux      <= y_in; //dividendo
-                    z_aux      <= 32'sb0;
+                    z_aux      <= 32'b0;
                 end
-                
+                /////////////////////
+
+                // LINEAR + ROTATION
+                MULT: begin
+                    mode_coord <= LINEAR;
+                    mode_op    <= ROTATION;
+                    x_aux      <= x_in;
+                    y_aux      <= 32'b0;
+                    z_aux      <= z_in;
+                end
+                ////////////////////
+
+                // HYPERBOLIC + ROTATION
                 SINH: begin
                     mode_coord <= HYPERBOLIC;
                     mode_op    <= ROTATION;
@@ -128,6 +145,18 @@ module top_level_calc_cordic #(
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
+                ////////////////////////
+
+                // HYPERBOLIC + VECTORING
+                MODH, ATANH: begin
+                    mode_coord <= HYPERBOLIC;
+                    mode_op    <= VECTORING;
+                    x_aux      <= x_in;
+                    y_aux      <= y_in;
+                    z_aux      <= 0.0;
+                end
+                /////////////////////////
+                
 
                 default: begin
                     //mode_coord <= ; // Padrão
@@ -147,12 +176,22 @@ module top_level_calc_cordic #(
         end else begin
             if (valid) begin
                 case (operation) 
-                    SIN: result_aux     <= y_out;
-                    COS: result_aux     <= x_out;
-                    MULT: result_aux    <= y_out;
-                    DIV: result_aux     <= z_out;
-                    SINH: result_aux    <= y_out;
-                    COSH: result_aux    <= x_out;
+                    //CIRCULAR
+                    SIN:  result_aux <= y_out;
+                    COS:  result_aux <= x_out;
+                    MOD:  result_aux <= x_out;
+                    ATAN: result_aux <= z_out;
+
+                    //LINEAR
+                    MULT: result_aux <= y_out;
+                    DIV:  result_aux <= z_out;
+
+                    //HIPERBÓLICO
+                    SINH:  result_aux <= y_out;
+                    COSH:  result_aux <= x_out;
+                    MODH:  result_aux <= x_out;
+                    ATANH: result_aux <= z_out;
+
                     default: result_aux <= 32'sb0;
                 endcase
                 completed <= 1'b1;
