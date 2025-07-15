@@ -45,8 +45,13 @@ module cordic #(
     reg sigma; // Sinal de direção: 0 para sinal neg, 1 para sinal pos
     reg hyperbolic_4, hyperbolic_13; // Sinais de controle para iterações específicas no modo hiperbólico
     reg completed; //Sinal para indicar que o cálculo está concluído
-    reg sign_sin, sign_cos; //flag para correçao de quadrante, 1 para pos, 0 para neg
-    //reg signed [2*WIDTH-1:0] mult_x, mult_y; // Variáveis para calcular ganho de X
+    reg signed [2*WIDTH-1:0] mult_x; // Variável para calcular ganho de X
+
+    //CORREÇAO DE QUADRANTE PARA SENO E COSSENO
+    wire signed [WIDTH-1:0] z_tratado;
+    wire [2:0] quadrante;
+    wire done_corquad;
+    correcao_quadrante_pi_4 corquad (clk, rst, enable, z_in, z_tratado, quadrante, done_corquad);
 
     //Lógica para definir a direção da rotação ou vetorização
     always @(*) begin
@@ -70,23 +75,30 @@ module cordic #(
     assign shift_Y = reg_Y >>> iter_counter;
 
     // Atualização de alpha
-    assign alpha =  (mode_coord == CIRCULAR)    ?   circular_lut(iter_counter) : 
-                    (mode_coord == LINEAR)      ?   linear_lut(iter_counter) : 
-                    (mode_coord == HYPERBOLIC)  ?   hyperbolic_lut(iter_counter) : 32'sd0;
-/*
+    assign alpha =  (mode_coord == CIRCULAR)   ? circular_lut(iter_counter) : 
+                    (mode_coord == LINEAR)     ? linear_lut(iter_counter) : 
+                    (mode_coord == HYPERBOLIC) ? hyperbolic_lut(iter_counter) : 32'sd0;
+
     //cálculo do ganho K
-    always @(*)begin
-        if(mode_coord == HYPERBOLIC)begin
-            mult_x <= (reg_X * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS;
-            //mult_y <= (reg_Y * K_HYPERBOLIC);
-        end else if(mode_coord == CIRCULAR)begin
-            mult_x <= (reg_X * K_INV_CIRCULAR) >>> FRACTIONAL_BITS;
-            //mult_y <= (reg_Y * K_CIRCULAR);
-        end else
+    always @(*) begin
+        if (rst) begin
             mult_x <= 64'b0;
-            //mult_y <= 64'b0;
+        end else begin
+            if (state == FINALIZE) begin
+                if (mode_op == VECTORING) begin
+                    if(mode_coord == HYPERBOLIC)begin
+                        mult_x <= (reg_X * K_HYPERBOLIC) >>> FRACTIONAL_BITS;
+                    end else if(mode_coord == CIRCULAR)begin
+                        mult_x <= (reg_X * K_CIRCULAR) >>> FRACTIONAL_BITS;
+                    end else
+                        mult_x <= 64'b0;
+                end else 
+                mult_x <= 64'b0;
+            end else 
+                mult_x <= 64'b0;
+        end
     end
-*/    
+   
     // executa os cálculos do cordic generalizado
     always @(*)begin
         if (rst) begin
@@ -131,7 +143,15 @@ module cordic #(
             IDLE: 
                 next_state <= (enable) ? INITIALIZE : IDLE;
             INITIALIZE: 
-                next_state <= UPDATE;
+                if (mode_op == ROTATION && mode_coord == CIRCULAR) begin
+                    if (~done_corquad) begin
+                        next_state <= INITIALIZE;
+                    end else begin
+                        next_state <= UPDATE;
+                    end
+                end else begin
+                    next_state <= UPDATE;
+                end
             UPDATE: 
                 next_state <= (iter_counter == ITERATIONS-1) ? FINALIZE : UPDATE;
             FINALIZE: 
@@ -171,28 +191,27 @@ module cordic #(
                 end
 
                 INITIALIZE: begin
+                    //CONTADOR DE ITERAÇÕES
                     iter_counter <= (mode_coord == HYPERBOLIC) ? 1 : 0; // Inicia o contador de iterações em 1 para hiperbólico, 0 para outros modos
-                    reg_X        <= x_in;
-                    reg_Y        <= y_in;
-
-                    //CORREÇAO DE QUADRANTE PARA SENO E COSSENO
-                    if (mode_coord == CIRCULAR && mode_op == ROTATION) begin
-                        if (z_in >= -32'sd5898240 && z_in <= 32'sd5898240 ) begin // 1° ou 4° quadrante
-                            reg_Z <= z_in; 
-                            sign_cos <= 1'b1; // não há alteração
-                            sign_sin <= 1'b1; // não há alteração
-                        end else if (z_in > 32'sd5898240 && z_in <= 32'sd11796480) begin // 2° quadrante
-                            reg_Z <= 32'sd11796480 - z_in; 
-                            sign_sin <= 1'b1; // Seno é positivo no Q2
-                            sign_cos <= 1'b0; // Cosseno é negativo no Q2
-                        end else begin // 3° quadrante
-                            reg_Z <= z_in - 32'sd11796480; 
-                            sign_sin <= 1'b0; // Seno é negativo no Q3
-                            sign_cos <= 1'b0; // Cosseno é negativo no Q3
+                    
+                    //SENO E COSSENO, 1/K É SETADO EM X NO INÍCIO DA OPERAÇÃO
+                    if (mode_op == ROTATION) begin
+                        if (mode_coord == CIRCULAR) begin 
+                            reg_X <= K_INV_CIRCULAR;//SENO E COSSENO, 1/K É SETADO NO INÍCIO DA OPERAÇÃO
+                            reg_Z <= z_tratado; //PARA SENO E COSSENO HÁ O TRATAMENTO DO QUADRANTE
+                        end else if (mode_coord == HYPERBOLIC) begin
+                            reg_X <= K_INV_HYPERBOLIC;//SENO E COSSENO, 1/K É SETADO NO INÍCIO DA OPERAÇÃO  
+                            reg_Z <= z_in;                          
+                        end else begin
+                            reg_X <= x_in;
+                            reg_Z <= z_in;
                         end
                     end else begin
+                        reg_X <= x_in;
                         reg_Z <= z_in;
                     end
+
+                    reg_Y <= y_in;                      
                 end
 
                 UPDATE: begin
@@ -216,37 +235,49 @@ module cordic #(
                 end
 
                 FINALIZE: begin
-                    
-                    if (mode_coord == CIRCULAR && mode_op == ROTATION) begin
-                        Y_out_aux <= (sign_sin) ? reg_Y : -reg_Y;
-                        X_out_aux <= (sign_cos) ? reg_X : -reg_X; 
-                    end else begin
-                        X_out_aux <= reg_X;
-                        Y_out_aux <= reg_Y;
-                    end
-
-                    Z_out_aux <= reg_Z;                 
-                    completed <= 1'b1; // Indica que a saída é válida
-/*
                     case (mode_coord)                        
                         CIRCULAR: begin 
                             if (mode_op == ROTATION) begin
-                                X_out_aux <= reg_X;
-                                Y_out_aux <= reg_Y;
+                                case (quadrante)
+                                    3'b000: begin
+                                        X_out_aux <= reg_X; 
+                                        Y_out_aux <= reg_Y;                             
+                                    end
+                                    3'b001: begin
+                                        X_out_aux <= -reg_Y; 
+                                        Y_out_aux <= reg_X;
+                                    end
+                                    3'b010: begin
+                                        X_out_aux <= -reg_X;
+                                        Y_out_aux <= -reg_X;
+                                    end
+                                    3'b011: begin
+                                        X_out_aux <= -reg_X;
+                                        Y_out_aux <= -reg_Y;
+                                    end
+                                    3'b100: begin
+                                        X_out_aux <= reg_Y;
+                                        Y_out_aux <= -reg_X;
+                                    end
+                                    default: begin
+                                        X_out_aux <= reg_X; 
+                                        Y_out_aux <= reg_Y; 
+                                    end
+                                endcase
                                 Z_out_aux <= reg_Z;
                             end else begin
-                                X_out_aux <= mult_x;
+                                X_out_aux <= mult_x; //MODO VECTORING
                                 Y_out_aux <= reg_Y;
                                 Z_out_aux <= reg_Z;
                             end                          
                         end
                         HYPERBOLIC: begin
                             if (mode_op == ROTATION) begin
-                                X_out_aux <= mult_x;
+                                X_out_aux <= reg_X;
                                 Y_out_aux <= reg_Y;
                                 Z_out_aux <= reg_Z;
                             end else begin
-                                X_out_aux <= reg_X;
+                                X_out_aux <= mult_x; //MODO VECTORING
                                 Y_out_aux <= reg_Y;
                                 Z_out_aux <= reg_Z;
                             end 
@@ -257,7 +288,9 @@ module cordic #(
                             Z_out_aux <= reg_Z;
                         end
                     endcase
-*/
+                        
+                    completed <= 1'b1; // Indica que a saída é válida
+
                 end
 
                 default: begin

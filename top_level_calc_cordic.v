@@ -84,7 +84,7 @@ module top_level_calc_cordic #(
                 SIN: begin
                     mode_coord <= CIRCULAR;
                     mode_op    <= ROTATION;
-                    x_aux      <= K_INV_CIRCULAR;
+                    x_aux      <= 0.0;
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
@@ -92,7 +92,7 @@ module top_level_calc_cordic #(
                 COS: begin
                     mode_coord <= CIRCULAR;
                     mode_op    <= ROTATION;
-                    x_aux      <= K_INV_CIRCULAR;
+                    x_aux      <= 0.0;
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
@@ -116,7 +116,7 @@ module top_level_calc_cordic #(
                 SINH: begin
                     mode_coord <= HYPERBOLIC;
                     mode_op    <= ROTATION;
-                    x_aux      <= K_INV_HYPERBOLIC;
+                    x_aux      <= 0.0;
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
@@ -124,7 +124,7 @@ module top_level_calc_cordic #(
                 COSH: begin
                     mode_coord <= HYPERBOLIC;
                     mode_op    <= ROTATION;
-                    x_aux      <= K_INV_HYPERBOLIC;
+                    x_aux      <= 0.0;
                     y_aux      <= 0.0;
                     z_aux      <= z_in;
                 end
