@@ -14,22 +14,22 @@ module tb_top_level_calc_cordic;
     wire done;
 
     // OPERAÇÕES
-    localparam  SIN     = 4'b0000,
-                COS     = 4'b0001,
-                TAN     = 4'b0010,
-                ATAN    = 4'b0011,
-                MAG     = 4'b0100,
-                POLtoREC= 4'b0101,
-                RECtoPOL= 4'b0110,
-                MULT    = 4'b0111,
-                DIV     = 4'b1000,
-                SINH    = 4'b1001,
-                COSH    = 4'b1010,
-                ATANH   = 4'b1011,
-                EXP     = 4'b1100,
-                LOG     = 4'b1101,
-                SQRT    = 4'b1110,
-                DEFAULT = 4'b1111;
+    localparam  SIN     = 4'b0000, //0 para Seno
+                COS     = 4'b0001, //1 para Cosseno
+                ATAN    = 4'b0010, //2 para Arc Tangente
+                MOD     = 4'b0011, //3 para Módulo/Magnitude
+                MULT    = 4'b0100, //4 para Multiplicação
+                DIV     = 4'b0101, //5 para Divisão
+                SINH    = 4'b0110, //6 para Seno Hiperbólico
+                COSH    = 4'b0111, //7 para Cosseno Hiperbólico
+                ATANH   = 4'b1000, //8 para Arc Tangente Hiperbólico
+                MODH    = 4'b1001, //9 para Módulo Hiperbólico
+                //EXP     = 4'b1010, //10 para Exponencial
+                //LOG     = 4'b1011, //11 para Logaritmo
+                //SQRT    = 4'b1100, //12 para Raiz Quadrada
+                //      = 4'b1101, //13 para 
+                //      = 4'b1110, //14 para 
+                DEFAULT = 4'b1111; // Padrão/Sem uso
 
     // Variáveis para leitura do arquivo
     integer file, r, grau;
@@ -88,7 +88,8 @@ module tb_top_level_calc_cordic;
                 $display("ERRO em %s: Esperado=%f, Obtido=%f (Erro=%f)", 
                         nome_op, ref_val, r_result, error);
                 error_count = error_count + 1;
-            end
+            end 
+            
         end
     endtask
 
@@ -101,7 +102,6 @@ module tb_top_level_calc_cordic;
         #20 rst = 0;
 
         $display("=== Iniciando testes (mostrando apenas erros > %f) ===", ERROR_THRESHOLD);
-
         // Abre o arquivo de teste
         file = $fopen("tabela_trigonometrica_verilog.txt","r");
         if (file == 0) begin 
@@ -111,10 +111,12 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%d,%f,%f,%f,%f,%f,%f,%f\n",
-           grau, angle_rad, seno_ref, cos_ref, tan_ref, xin, zin, mult_ref);
-            
+
+            r = $fscanf(file,"%d,%f,%f,%f,%f,%f,%f,%f\n",
+            grau, angle_rad, seno_ref, cos_ref, tan_ref, xin, zin, mult_ref);
+
             if (r == 8) begin  // Verifica se leu todos os 5 valores
+
                 // Teste do SENO
                 $sformat(nome_op_temp, "SENO(%0d)", grau);
                 testar(SIN, 0.0, 0.0, angle_rad, nome_op_temp, seno_ref);
@@ -144,7 +146,7 @@ module tb_top_level_calc_cordic;
             $display(" ATENÇÃO: %0d erros encontrados", error_count);
             $display("====================================\n");
         end
-
+        
         $display("=== Fim dos testes ===");
         $stop;
     end
