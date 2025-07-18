@@ -51,7 +51,13 @@ module cordic #(
     wire signed [WIDTH-1:0] z_tratado;
     wire [2:0] quadrante;
     wire done_corquad;
-    correcao_quadrante_pi_4 corquad (clk, rst, enable, z_in, z_tratado, quadrante, done_corquad);
+    correcao_quadrante_pi_4 #(WIDTH) corquad (clk, rst, enable, z_in, z_tratado, quadrante, done_corquad);
+
+    //CORREÇAO DE Z PARA MULTIPLICAÇÃO
+    wire signed [WIDTH-1:0] z_reduzido;
+    wire [WIDTH-1:0] cont_div;
+    wire done_diviz;
+    corr_z_multi #(WIDTH) corz (clk, rst, enable, z_in, z_reduzido, cont_div, done_diviz);
 
     //Lógica para definir a direção da rotação ou vetorização
     always @(*) begin
@@ -140,30 +146,38 @@ module cordic #(
     //Lógica de transição de estados
     always @(*) begin
         case (state)
-            IDLE: 
+            IDLE:
                 next_state <= (enable) ? INITIALIZE : IDLE;
-            INITIALIZE: 
-                if (mode_op == ROTATION && mode_coord == CIRCULAR) begin
-                    if (~done_corquad) begin
-                        next_state <= INITIALIZE;
-                    end else begin
+            INITIALIZE:
+                if (mode_op == ROTATION) begin
+                    if (mode_coord == CIRCULAR)
+                        next_state <= (~done_corquad) ? INITIALIZE : UPDATE;
+                    else if (mode_coord == LINEAR)
+                        next_state <= (~done_diviz) ? INITIALIZE : UPDATE;
+                    else
                         next_state <= UPDATE;
-                    end
                 end else begin
                     next_state <= UPDATE;
                 end
-            UPDATE: 
+            UPDATE:
                 next_state <= (iter_counter == ITERATIONS-1) ? FINALIZE : UPDATE;
-            FINALIZE: 
+            FINALIZE:
                 next_state <= IDLE;
-            default: 
+            default:
                 next_state <= IDLE;
         endcase
     end
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state         <= IDLE;
+            state <= IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
             iter_counter  <= 0;
             reg_X         <= 32'b0;
             reg_Y         <= 32'b0;
@@ -175,7 +189,6 @@ module cordic #(
             hyperbolic_4  <= 1'b1;
             hyperbolic_13 <= 1'b1;
         end else begin
-            state <= next_state;
             case (state)
                 IDLE: begin
                     iter_counter  <= 32'b0;
@@ -194,7 +207,6 @@ module cordic #(
                     //CONTADOR DE ITERAÇÕES
                     iter_counter <= (mode_coord == HYPERBOLIC) ? 1 : 0; // Inicia o contador de iterações em 1 para hiperbólico, 0 para outros modos
                     
-                    //SENO E COSSENO, 1/K É SETADO EM X NO INÍCIO DA OPERAÇÃO
                     if (mode_op == ROTATION) begin
                         if (mode_coord == CIRCULAR) begin 
                             reg_X <= K_INV_CIRCULAR;//SENO E COSSENO, 1/K É SETADO NO INÍCIO DA OPERAÇÃO
@@ -202,13 +214,16 @@ module cordic #(
                         end else if (mode_coord == HYPERBOLIC) begin
                             reg_X <= K_INV_HYPERBOLIC;//SENO E COSSENO, 1/K É SETADO NO INÍCIO DA OPERAÇÃO  
                             reg_Z <= z_in;                          
+                        end else if (mode_coord == LINEAR) begin
+                            reg_X <= x_in;
+                            reg_Z <= z_reduzido; //substituido z_in por z reduzido
                         end else begin
                             reg_X <= x_in;
                             reg_Z <= z_in;
                         end
                     end else begin
                         reg_X <= x_in;
-                        reg_Z <= z_in;
+                        reg_Z <= z_in; 
                     end
 
                     reg_Y <= y_in;                      
@@ -271,6 +286,7 @@ module cordic #(
                                 Z_out_aux <= reg_Z;
                             end                          
                         end
+
                         HYPERBOLIC: begin
                             if (mode_op == ROTATION) begin
                                 X_out_aux <= reg_X;
@@ -281,7 +297,20 @@ module cordic #(
                                 Y_out_aux <= reg_Y;
                                 Z_out_aux <= reg_Z;
                             end 
-                        end                      
+                        end        
+                        
+                        LINEAR: begin
+                            if (mode_op == ROTATION) begin
+                                X_out_aux <= reg_X;
+                                Y_out_aux <= reg_Y <<< cont_div;
+                                Z_out_aux <= reg_Z; 
+                            end else begin
+                                X_out_aux <= reg_X;
+                                Y_out_aux <= reg_Y;
+                                Z_out_aux <= reg_Z;
+                            end
+                        end 
+
                         default: begin
                             X_out_aux <= reg_X;
                             Y_out_aux <= reg_Y;
