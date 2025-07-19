@@ -68,10 +68,10 @@ module cordic #(
                 sigma <= 1'b0; //0 para -1
             end
         end else begin //modo vetorização
-            if (reg_Y[WIDTH-1] == 1'b0) begin //testa se Y é positivo
-                sigma <= 1'b0; //0 para -1
-            end else begin
-                sigma <= 1'b1; //1 para +1
+            if (reg_Y[WIDTH-1] == reg_X[WIDTH-1]) begin // testa se Y e X têm o mesmo sinal
+                sigma <= 1'b0; // Para que Y se aproxime de zero, a operação deve "subtrair" ou "adicionar um negativo"
+            end else begin // Y e X têm sinais opostos
+                sigma <= 1'b1; // Para que Y se aproxime de zero, a operação deve "somar" ou "subtrair um negativo"
             end
         end
     end
@@ -85,7 +85,7 @@ module cordic #(
                     (mode_coord == LINEAR)     ? linear_lut(iter_counter) : 
                     (mode_coord == HYPERBOLIC) ? hyperbolic_lut(iter_counter) : 32'sd0;
 
-    //cálculo do ganho K
+    //cálculo do ganho K no final da operação
     always @(*) begin
         if (rst) begin
             mult_x <= 64'b0;
@@ -93,9 +93,9 @@ module cordic #(
             if (state == FINALIZE) begin
                 if (mode_op == VECTORING) begin
                     if(mode_coord == HYPERBOLIC)begin
-                        mult_x <= (reg_X * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS;
+                        mult_x <= (reg_X[WIDTH-1] == 1'b1) ? (-reg_X * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS : (reg_X * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS;
                     end else if(mode_coord == CIRCULAR)begin
-                        mult_x <= (reg_X * K_INV_CIRCULAR) >>> FRACTIONAL_BITS;
+                        mult_x <= (reg_X[WIDTH-1] == 1'b1) ? (-reg_X * K_INV_CIRCULAR) >>> FRACTIONAL_BITS : (reg_X * K_INV_CIRCULAR) >>> FRACTIONAL_BITS;
                     end else
                         mult_x <= 64'b0;
                 end else 
