@@ -17,14 +17,17 @@ module correcao_quadrante_pi_4 #(
     localparam VERIF_2 = 3'b100;
     localparam CORQUAD = 3'b101;
 
-    localparam signed [31:0] _360_2PI   = 32'sd411775;   // 2π ≈ 6.28302
-    localparam signed [31:0] _225_NEG   = -32'sd257359;  // ≈ -3.92883
-    localparam signed [31:0] _225_POS   = 32'sd257359;   // ≈ 3.92883 225°
-    localparam signed [31:0] _45_PI_4   = 32'sd51472;    // π/4 ≈ 0.78540
-    localparam signed [31:0] _135_3PI_4 = 32'sd154416;   // 3π/4 ≈ 2.35620
-    localparam signed [31:0] _90_PI_2   = 32'sd102944;   // π/2 ≈ 1.57106
-    localparam signed [31:0] _180_PI    = 32'sd205887;   // π    ≈ 3.14154
-    localparam signed [31:0] _315_5_5   = 32'sd360303;   // ≈ 5.50024
+    localparam signed [31:0] _360_2PI     = 32'sd411775;   // 2π ≈ 6.28302
+    localparam signed [31:0] _225_NEG     = -32'sd257359;  // ≈ -3.92883
+    localparam signed [31:0] _225_POS     = 32'sd257359;   // ≈ 3.92883 225°
+    localparam signed [31:0] _45_PI_4_POS = 32'sd51472;    // π/4 ≈ 0.78540
+    localparam signed [31:0] _45_PI_4_NEG = -32'sd51472;   // -π/4 ≈ -0.78540
+    localparam signed [31:0] _135_3PI_4   = 32'sd154416;   // 3π/4 ≈ 2.35620
+    localparam signed [31:0] _90_PI_2     = 32'sd102944;   // π/2 ≈ 1.57106
+    localparam signed [31:0] _180_PI      = 32'sd205887;   // π    ≈ 3.14154
+    localparam signed [31:0] _315_5_5     = 32'sd360303;   // ≈ 5.50024
+    localparam signed [31:0] _ZERO        = 32'd0;        // 0
+    
 
     reg [2:0] state, next_state;
     reg signed [WIDTH-1:0] z_aux, z_tratado, z_normalizado;
@@ -61,8 +64,11 @@ module correcao_quadrante_pi_4 #(
                     VERIF : begin
                         if (z_tratado > _360_2PI) begin
                             next_state <= MAIOR;
-                        end else if ( z_tratado < 32'sd0 && z_tratado < _225_NEG) begin
+                        end else if ( z_tratado < _ZERO && z_tratado < _45_PI_4_NEG) begin
                             next_state <= MENOR;
+                        end else if (z_tratado > _315_5_5 && z_tratado <= _360_2PI) begin
+                            z_normalizado <= z_tratado - _360_2PI;
+                            next_state <= CORQUAD;
                         end else begin
                             z_normalizado <= z_tratado;
                             next_state <= CORQUAD;
@@ -80,7 +86,7 @@ module correcao_quadrante_pi_4 #(
                         if (z_normalizado > _360_2PI) begin
                             z_tratado <= z_normalizado;
                             next_state <= VERIF;
-                        end else if (z_normalizado < 32'sd0 && z_normalizado < _225_NEG) begin
+                        end else if (z_normalizado < _ZERO && z_normalizado < _45_PI_4_NEG) begin
                             z_tratado <= z_normalizado;
                             next_state <= VERIF;
                         end else begin
@@ -88,7 +94,7 @@ module correcao_quadrante_pi_4 #(
                         end
                     end         
                     CORQUAD : begin
-                        if (z_normalizado > _45_PI_4 && z_normalizado <= _135_3PI_4) begin // maior que 45° e menor ou igual a 135° 
+                        if (z_normalizado > _45_PI_4_POS && z_normalizado <= _135_3PI_4) begin // maior que 45° e menor ou igual a 135° 
                             z_aux <= z_normalizado - _90_PI_2; // θ° - 90°
                             quad_in <= 3'b001;
                             next_state <= START;

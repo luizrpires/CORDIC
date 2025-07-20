@@ -25,15 +25,6 @@ module corr_z_multi #(
     reg completed;
 
     always @(*) begin
-        case (state)
-            IDLE:      next_state = (enable) ? VERIF : IDLE;
-            VERIF:     next_state = (z_normalized < TWO_POS && z_normalized > TWO_NEG) ? IDLE : NORMALIZE;
-            NORMALIZE: next_state = VERIF;
-            default:   next_state = IDLE;
-        endcase
-    end
-
-    always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= IDLE;
         end else begin
@@ -43,32 +34,42 @@ module corr_z_multi #(
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
+            next_state   <= IDLE;
             z_normalized <= 0;
             z_aux        <= 0;
             count_aux    <= 0;
             count_n_aux  <= 0;
             completed    <= 1'b0;
         end else begin
+            next_state <= state;
             case (state)
                 IDLE : begin
-                    z_normalized <= (enable) ? z_in : 1'b0;
-                    z_aux        <= 0;
-                    count_aux    <= 0;
-                    completed    <= 1'b0;     
+                    completed    <= 1'b0; 
+                    if (enable) begin
+                        z_normalized <= z_in;
+                        count_aux    <= 0;                       
+                        count_n_aux  <= 0;
+                        next_state   <= VERIF;
+                    end else begin
+                        next_state   <= IDLE;  
+                    end
                 end
                 VERIF : begin
                     count_n_aux <= count_aux;
                     if (z_normalized < TWO_POS && z_normalized > TWO_NEG) begin
-                        completed <= 1'b1;
+                        completed  <= 1'b1;
+                        next_state <= IDLE;
                     end else begin
-                        z_aux <= z_normalized;
-                        completed <= 1'b0;
+                        z_aux      <= z_normalized;
+                        completed  <= 1'b0;
+                        next_state <= NORMALIZE;
                     end
                 end
                 NORMALIZE : begin
                     z_normalized <= z_aux >>> 1; // divide por 2
-                    count_aux <= count_n_aux + 1'b1; //soma 1 ao contador de divisões
-                    completed <= 1'b0;
+                    count_aux    <= count_n_aux + 1'b1; //soma 1 ao contador de divisões
+                    completed    <= 1'b0;
+                    next_state   <= VERIF;
                 end
                 default : begin
                     z_normalized <= 0;
@@ -77,7 +78,6 @@ module corr_z_multi #(
                     count_n_aux  <= 0;
                     completed    <= 1'b0;
                 end
-
             endcase
         end
     end
