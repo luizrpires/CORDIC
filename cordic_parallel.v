@@ -106,7 +106,6 @@ module cordic_parallel #(
             end
             y_in_aux <= y_in;
         end
-
     end
 
     always @(posedge clk or posedge rst) begin
@@ -180,6 +179,7 @@ module cordic_parallel #(
                 .ITERATIONS(N), //quantidade de iterações
                 .WIDTH(WIDTH)   //tamanho dos dados de entrada e saída
             ) cordic_calc_inst (
+                .clk(clk),
                 .rst(rst), 
                 .enable(enable_iter[i]),
                 .x_in(x[i]),
@@ -209,6 +209,7 @@ module cordic_calc #(
     parameter ITERATIONS = 16, //quantidade de iterações
     parameter WIDTH = 32 //tamanho dos dados de entrada e saída
 )(
+    input clk,
     input rst, 
     input enable,
     input signed [WIDTH-1:0] x_in,
@@ -263,7 +264,7 @@ module cordic_calc #(
     assign x_shift = x_in >>> iteration;
     assign y_shift = y_in >>> iteration;
 
-    always @(*)begin
+    always @(*) begin
         if (rst) begin
             next_X    = 0;
             next_Y    = 0;
@@ -298,7 +299,7 @@ module cordic_calc #(
                     next_Z = z_in;
                 end
             endcase
-            done_calc = 1;
+            done_calc <= 1;
         end else begin
             next_X    = 0;
             next_Y    = 0;

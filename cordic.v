@@ -521,16 +521,16 @@ module correcao_quadrante_pi_4 #(
     localparam VERIF_2 = 3'b100;
     localparam CORQUAD = 3'b101;
 
-    localparam signed [31:0] _360_2PI     = 32'sd411775;   // 2π ≈ 6.28302
-    localparam signed [31:0] _225_NEG     = -32'sd257359;  // ≈ -3.92883
-    localparam signed [31:0] _225_POS     = 32'sd257359;   // ≈ 3.92883 225°
-    localparam signed [31:0] _45_PI_4_POS = 32'sd51472;    // π/4 ≈ 0.78540
-    localparam signed [31:0] _45_PI_4_NEG = -32'sd51472;   // -π/4 ≈ -0.78540
-    localparam signed [31:0] _135_3PI_4   = 32'sd154416;   // 3π/4 ≈ 2.35620
-    localparam signed [31:0] _90_PI_2     = 32'sd102944;   // π/2 ≈ 1.57106
-    localparam signed [31:0] _180_PI      = 32'sd205887;   // π    ≈ 3.14154
-    localparam signed [31:0] _315_5_5     = 32'sd360303;   // ≈ 5.50024
-    localparam signed [31:0] _ZERO        = 32'd0;        // 0
+    localparam signed [WIDTH-1:0] _360_2PI     = 32'sd411775;   // 2π ≈ 6.28302
+    localparam signed [WIDTH-1:0] _225_NEG     = -32'sd257359;  // ≈ -3.92883
+    localparam signed [WIDTH-1:0] _225_POS     = 32'sd257359;   // ≈ 3.92883 225°
+    localparam signed [WIDTH-1:0] _45_PI_4_POS = 32'sd51472;    // π/4 ≈ 0.78540
+    localparam signed [WIDTH-1:0] _45_PI_4_NEG = -32'sd51472;   // -π/4 ≈ -0.78540
+    localparam signed [WIDTH-1:0] _135_3PI_4   = 32'sd154416;   // 3π/4 ≈ 2.35620
+    localparam signed [WIDTH-1:0] _90_PI_2     = 32'sd102944;   // π/2 ≈ 1.57106
+    localparam signed [WIDTH-1:0] _180_PI      = 32'sd205887;   // π    ≈ 3.14154
+    localparam signed [WIDTH-1:0] _315_5_5     = 32'sd360303;   // ≈ 5.50024
+    localparam signed [WIDTH-1:0] _ZERO        = 32'd0;         // 0
     
 
     reg [2:0] state, next_state;

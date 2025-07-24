@@ -211,7 +211,7 @@ module cordic_q16_32 #(
                     Z_out_aux     <= {INTERNAL_WIDTH{1'b0}};
                     completed     <= 1'b0;
                     hyperbolic_4  <= 1'b1;
-                    hyperbolic_13 <= 1'b1;                  
+                    hyperbolic_13 <= 1'b1;
                 end
 
                 INITIALIZE: begin
@@ -223,7 +223,7 @@ module cordic_q16_32 #(
                             reg_Z <= z_tratado; 
                         end else if (mode_coord == HYPERBOLIC) begin
                             reg_X <= K_INV_HYPERBOLIC;
-                            reg_Z <= Z_in_aux;                          
+                            reg_Z <= Z_in_aux;
                         end else if (mode_coord == LINEAR) begin
                             reg_X <= X_in_aux;
                             reg_Z <= z_reduzido;
@@ -236,7 +236,7 @@ module cordic_q16_32 #(
                         reg_Z <= Z_in_aux; 
                     end
 
-                    reg_Y <= Y_in_aux;                      
+                    reg_Y <= Y_in_aux;
                 end
 
                 UPDATE: begin

@@ -54,9 +54,10 @@ module top_level_calc_cordic #(
     wire signed [WIDTH-1:0] x_out, y_out, z_out;
     wire valid;
 
-    //cordic_pipeline #(
+    cordic_parallel_q16_32 #(
+    //cordic_parallel #(
     //cordic_q16_32 #(
-    cordic #(
+    //cordic #(
         .ITERATIONS(ITERATIONS), 
         .WIDTH(WIDTH) 
     ) ins_cordic (
