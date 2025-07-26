@@ -1,31 +1,37 @@
 module cordic_parallel_q16_32 #(
-    parameter ITERATIONS = 16, //quantidade de iterações
-    parameter WIDTH = 32 //tamanho dos dados de entrada e saída
+    parameter ITERATIONS = 16 //quantidade de iterações
 )(
-    input clk,
-    input rst,
-    input enable,
-    input signed [WIDTH-1:0] x_in,
-    input signed [WIDTH-1:0] y_in,
-    input signed [WIDTH-1:0] z_in,
-    input mode_op,
-    input [1:0] mode_coord,
-    output signed [WIDTH-1:0] x_out,
-    output signed [WIDTH-1:0] y_out,
-    output signed [WIDTH-1:0] z_out,
-    output valid
+    clk, rst,
+    enable,
+    x_in, y_in, z_in,
+    mode_op,
+    mode_coord,
+    x_out, y_out, z_out,
+    valid
 );
+    localparam WIDTH = 32; //tamanho dos dados de entrada e saída
+
+    input clk;
+    input rst;
+    input enable;
+    input signed [WIDTH-1:0] x_in;
+    input signed [WIDTH-1:0] y_in;
+    input signed [WIDTH-1:0] z_in;
+    input mode_op;
+    input [1:0] mode_coord;
+    output signed [WIDTH-1:0] x_out;
+    output signed [WIDTH-1:0] y_out;
+    output signed [WIDTH-1:0] z_out;
+    output valid;
 
     localparam INTERNAL_WIDTH = 48; //WIDTH para cálculos internos (Q16.32)
     localparam FRACTIONAL_BITS = 32; //32 bits fracionários para Q16.32
 
-
     //VARIAVEIS PARA CORREÇÃO DO MODULO
-    localparam K_INV_CIRCULAR   = 48'sd2608131496; // (0.6072529350088813 * 2^32)
-    localparam K_CIRCULAR       = 48'sd7072781453; // (1.646760258121066 * 2^32)
-    localparam K_INV_HYPERBOLIC = 48'sd5186160416; // (1.2074970677630726 * 2^32)
-    localparam K_HYPERBOLIC     = 48'sd3556917369; // (0.8281593606 * 2^32)
-
+    localparam signed [INTERNAL_WIDTH-1:0] K_INV_CIRCULAR   = 48'sd2608131496; // (0.6072529350088813 * 2^32)
+    localparam signed [INTERNAL_WIDTH-1:0] K_CIRCULAR       = 48'sd7072781453; // (1.646760258121066 * 2^32)
+    localparam signed [INTERNAL_WIDTH-1:0] K_INV_HYPERBOLIC = 48'sd5186160416; // (1.2074970677630726 * 2^32)
+    localparam signed [INTERNAL_WIDTH-1:0] K_HYPERBOLIC     = 48'sd3556917369; // (0.8281593606 * 2^32)
 
     //MODO COORDENADA
     localparam CIRCULAR = 2'b01, //1 para Circular
@@ -39,8 +45,8 @@ module cordic_parallel_q16_32 #(
     
     reg signed [INTERNAL_WIDTH-1:0] x_in_aux, y_in_aux, z_in_aux;
     reg signed [INTERNAL_WIDTH-1:0] x_out_aux, y_out_aux, z_out_aux;
-    reg [2*INTERNAL_WIDTH-1:0] mult;
-    reg reg_valid;
+    reg signed [2*INTERNAL_WIDTH-1:0] mult;
+    reg completed;
     reg enable_start;
     wire done_iter[0:N-1];
     wire signed [INTERNAL_WIDTH-1:0] x[0:N], y[0:N], z[0:N];
@@ -50,33 +56,38 @@ module cordic_parallel_q16_32 #(
     wire signed [INTERNAL_WIDTH-1:0] z_tratado;
     wire [2:0] quadrante;
     wire done_corquad;
-    correcao_quadrante_pi_4_q16_32 #(WIDTH, INTERNAL_WIDTH) corquad (clk, rst, enable, z_in, z_tratado, quadrante, done_corquad);
+    wire enable_corquad;
+    assign enable_corquad = (enable && mode_op==ROTATION && mode_coord==CIRCULAR) ? 1'b1 : 1'b0;
+    correcao_quadrante_pi_4_q16_32 #(WIDTH, INTERNAL_WIDTH) corquad (clk, rst, enable_corquad, z_in, z_tratado, quadrante, done_corquad);
 
     //CORREÇAO DE Z PARA MULTIPLICAÇÃO
     wire signed [INTERNAL_WIDTH-1:0] z_reduzido;
-    wire [WIDTH-1:0] cont_div;
-    wire done_diviz;
-    corr_z_multi_q16_32 #(WIDTH, INTERNAL_WIDTH) corz (clk, rst, enable, z_in, z_reduzido, cont_div, done_diviz);
+    wire [3:0] cont_div;
+    wire done_corz;
+    wire enable_corz;
+    assign enable_corz = (enable && mode_op==ROTATION && mode_coord==LINEAR) ? 1'b1 : 1'b0;
+    corr_z_multi_q16_32 #(WIDTH, INTERNAL_WIDTH) corz (clk, rst, enable_corz, z_in, z_reduzido, cont_div, done_corz);
 
     always @(*) begin
         if (done_iter[N-1]) begin
             if (mode_op == VECTORING) begin
                 if(mode_coord == HYPERBOLIC)begin
-                    mult = (x[N][INTERNAL_WIDTH-1] == 1) ? (-x[N] * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS : 
+                    mult <= (x[N][INTERNAL_WIDTH-1] == 1) ? (-x[N] * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS : 
                                                            (x[N] * K_INV_HYPERBOLIC) >>> FRACTIONAL_BITS ;
                 end else if(mode_coord == CIRCULAR)begin
-                    mult = (x[N][INTERNAL_WIDTH-1] == 1) ? (-x[N] * K_INV_CIRCULAR) >>> FRACTIONAL_BITS : 
+                    mult <= (x[N][INTERNAL_WIDTH-1] == 1) ? (-x[N] * K_INV_CIRCULAR) >>> FRACTIONAL_BITS : 
                                                            (x[N] * K_INV_CIRCULAR) >>> FRACTIONAL_BITS ;
                 end else
-                    mult = 0;
+                    mult <= 0;
             end else begin
-                mult = 0;
+                mult <= 0;
             end            
         end else begin
-            mult = 0;
+            mult <= 0;
         end
     end
 
+    //ENTRADAS
     always @(posedge clk or posedge rst) begin 
         if (rst) begin
             enable_start <= 0;
@@ -96,7 +107,7 @@ module cordic_parallel_q16_32 #(
                 end else if (mode_coord == LINEAR) begin
                     x_in_aux <= {x_in, {16{1'b0}}};
                     z_in_aux <= z_reduzido;
-                    enable_start <= done_diviz;
+                    enable_start <= done_corz;
                 end else begin
                     x_in_aux <={x_in, {16{1'b0}}};
                     z_in_aux <= {z_in, {16{1'b0}}};   
@@ -111,12 +122,13 @@ module cordic_parallel_q16_32 #(
         end
     end
 
+    //SAÍDAS
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             x_out_aux <= 0;
             y_out_aux <= 0;
             z_out_aux <= 0;
-            reg_valid <= 0;
+            completed <= 0;
         end else if (done_iter[N-1]) begin               
             if (mode_coord == CIRCULAR) begin
                 if (mode_op == VECTORING) begin
@@ -160,12 +172,12 @@ module cordic_parallel_q16_32 #(
                 y_out_aux <= (mode_op == ROTATION) ? (y[N] <<< cont_div) : y[N];
                 z_out_aux <= z[N];
             end
-            reg_valid <= 1;
+            completed <= 1;
         end else begin
             x_out_aux <= 0;
             y_out_aux <= 0;
             z_out_aux <= 0;
-            reg_valid <= 0;
+            completed <= 0;
         end
     end
 
@@ -177,7 +189,7 @@ module cordic_parallel_q16_32 #(
     genvar i;
     generate
         for (i = 0; i < ITERATIONS; i = i + 1) begin
-            cordic_calc_q16_32 #(
+            cordic_calc_parallel_q16_32 #(
                 .I(i),          //iteração atual
                 .ITERATIONS(N), //quantidade de iterações
                 .WIDTH(INTERNAL_WIDTH)   //tamanho dos dados de entrada e saída
@@ -203,11 +215,11 @@ module cordic_parallel_q16_32 #(
     assign x_out = x_out_aux[INTERNAL_WIDTH-1 : FRACTIONAL_BITS-16]; // Pega os 32 bits mais significativos
     assign y_out = y_out_aux[INTERNAL_WIDTH-1 : FRACTIONAL_BITS-16];
     assign z_out = z_out_aux[INTERNAL_WIDTH-1 : FRACTIONAL_BITS-16];
-    assign valid = reg_valid;
+    assign valid = completed;
 
 endmodule
 
-module cordic_calc_q16_32 #( 
+module cordic_calc_parallel_q16_32 #( 
     parameter I = 0, //iteração atual
     parameter ITERATIONS = 16, //quantidade de iterações
     parameter WIDTH = 48 //tamanho dos dados de entrada e saída
@@ -236,13 +248,13 @@ module cordic_calc_q16_32 #(
 
     
     wire [$clog2(ITERATIONS)-1:0] iteration;
-    wire [WIDTH-1:0] alpha;
+    wire signed [WIDTH-1:0] alpha;
     wire signed [WIDTH-1:0] x_shift,y_shift;
     reg sigma;
     reg signed [WIDTH-1:0] next_X, next_Y, next_Z;
     reg done_calc;
 
-    assign iteration = iter_index(I, mode_coord);
+    assign iteration = (mode_coord == HYPERBOLIC) ? iter_index_hyperbolic(I) : I;
 
     assign alpha =  (mode_coord == CIRCULAR)   ? circular_lut(iteration) : 
                     (mode_coord == LINEAR)     ? linear_lut(iteration) : 
@@ -251,15 +263,15 @@ module cordic_calc_q16_32 #(
     always @(*) begin
         if (mode_op == ROTATION) begin
             if (z_in[WIDTH-1] == 1'b0) begin //testa se Z é positivo
-                sigma = 1'b1; //1 para +1
+                sigma <= 1'b1; //1 para +1
             end else begin
-                sigma = 1'b0; //0 para -1
+                sigma <= 1'b0; //0 para -1
             end
         end else begin //modo vetorização
             if (y_in[WIDTH-1] == x_in[WIDTH-1]) begin // testa se Y e X têm o mesmo sinal
-                sigma = 1'b0; //0 para -1
+                sigma <= 1'b0; //0 para -1
             end else begin
-                sigma = 1'b1; //1 para +1
+                sigma <= 1'b1; //1 para +1
             end
         end
     end
@@ -269,45 +281,45 @@ module cordic_calc_q16_32 #(
 
     always @(*) begin
         if (rst) begin
-            next_X    = 0;
-            next_Y    = 0;
-            next_Z    = 0;
-            done_calc = 0;
+            next_X    <= 0;
+            next_Y    <= 0;
+            next_Z    <= 0;
+            done_calc <= 0;
         end else if (enable) begin
             case (mode_coord)
                 //xi+1 = xi − μ σi yi 2^−i
                 //yi+1 = yi + σi xi 2^−i
                 //zi+1 = zi − σi αi
                 CIRCULAR: begin // m = 1
-                    next_X = x_in - (sigma ? y_shift : -y_shift);
-                    next_Y = y_in + (sigma ? x_shift : -x_shift);
-                    next_Z = z_in - (sigma ? alpha : -alpha);
+                    next_X <= x_in - (sigma ? y_shift : -y_shift);
+                    next_Y <= y_in + (sigma ? x_shift : -x_shift);
+                    next_Z <= z_in - (sigma ? alpha : -alpha);
                 end
 
                 LINEAR: begin // m = 0
-                    next_X = x_in;
-                    next_Y = y_in + (sigma ? x_shift : -x_shift);
-                    next_Z = z_in - (sigma ? alpha : -alpha);
+                    next_X <= x_in;
+                    next_Y <= y_in + (sigma ? x_shift : -x_shift);
+                    next_Z <= z_in - (sigma ? alpha : -alpha);
                 end
 
                 HYPERBOLIC: begin // m = -1
-                    next_X = x_in + (sigma ? y_shift : -y_shift);
-                    next_Y = y_in + (sigma ? x_shift : -x_shift);
-                    next_Z = z_in - (sigma ? alpha : -alpha);
+                    next_X <= x_in + (sigma ? y_shift : -y_shift);
+                    next_Y <= y_in + (sigma ? x_shift : -x_shift);
+                    next_Z <= z_in - (sigma ? alpha : -alpha);
                 end
                 
                 default: begin
-                    next_X = x_in;
-                    next_Y = y_in;
-                    next_Z = z_in;
+                    next_X <= x_in;
+                    next_Y <= y_in;
+                    next_Z <= z_in;
                 end
             endcase
             done_calc <= 1;
         end else begin
-            next_X    = 0;
-            next_Y    = 0;
-            next_Z    = 0;
-            done_calc = 0;
+            next_X    <= 0;
+            next_Y    <= 0;
+            next_Z    <= 0;
+            done_calc <= 0;
         end
     end
 
@@ -318,21 +330,16 @@ module cordic_calc_q16_32 #(
 
 
 
-    //FUNÇÕES AUXILIARES
-    function [$clog2(ITERATIONS)-1:0] iter_index;
+    //Função para repetir as iterações 4 e 13 no modo hiperbólico
+    function [$clog2(ITERATIONS)-1:0] iter_index_hyperbolic;
         input integer iter;
-        input [1:0] mode_coordinate;
         
-        if (mode_coordinate == HYPERBOLIC) begin
-            if (iter >= 0 && iter <= 3) begin
-                iter_index = iter + 1;
-            end else if (iter >= 14 && iter < ITERATIONS) begin
-                iter_index = iter - 1;                
-            end else begin
-                iter_index = iter;
-            end
+        if (iter >= 0 && iter <= 3) begin
+            iter_index_hyperbolic = iter + 1;
+        end else if (iter >= 14 && iter < ITERATIONS) begin
+            iter_index_hyperbolic = iter - 1;
         end else begin
-            iter_index = iter;
+            iter_index_hyperbolic = iter;
         end
     endfunction
 
@@ -456,229 +463,5 @@ module cordic_calc_q16_32 #(
             default: hyperbolic_lut = {WIDTH{1'b0}};
         endcase
     endfunction
-
-endmodule
-
-module corr_z_multi_q16_32 #(
-    parameter WIDTH = 32, // Tamanho dos dados de entrada (Q16.16)
-    parameter INTERNAL_WIDTH = 48 // Tamanho dos dados internos e saída (Q16.32)
-)(
-    input clk,
-    input rst,
-    input enable,
-    input signed [WIDTH-1:0] z_in, // Entrada em Q16.16
-    output signed [INTERNAL_WIDTH-1:0] z_out, // Saída em Q16.32
-    output [WIDTH-1:0] count_div, 
-    output done
-);
-
-    localparam IDLE      = 2'b00;
-    localparam VERIF     = 2'b01;
-    localparam NORMALIZE = 2'b10;
-    
-    localparam FRACTIONAL_BITS = 32;
-    localparam ONE_POS = 48'sd4294967296;  // 1.0 * 2^32
-    localparam ONE_NEG = -48'sd4294967296; // -1.0 * 2^32
-    localparam TWO_POS = 48'sd8589934592;  // 2.0 * 2^32
-    localparam TWO_NEG = -48'sd8589934592; // -2.0 * 2^32
-
-    reg [1:0] state, next_state;
-    reg signed [INTERNAL_WIDTH-1:0] z_aux, z_normalized; 
-    reg [WIDTH-1:0] count_aux, count_n_aux; 
-    reg completed;
-
-    always @(*) begin
-        if (rst) begin
-            state = IDLE;
-        end else begin
-            state = next_state;
-        end
-    end
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            next_state   <= IDLE;
-            z_normalized <= {INTERNAL_WIDTH{1'b0}};
-            z_aux        <= {INTERNAL_WIDTH{1'b0}};
-            count_aux    <= 0;
-            count_n_aux  <= 0;
-            completed    <= 1'b0;
-        end else begin
-            next_state <= state;
-            case (state)
-                IDLE : begin   
-                    completed   <= 1'b0;       
-                    if (enable) begin
-                        z_normalized <= {z_in, {FRACTIONAL_BITS-16{1'b0}}}; 
-                        count_aux    <= 0;                       
-                        count_n_aux  <= 0;
-                        next_state   <= VERIF;
-                    end else begin
-                        next_state   <= IDLE;                        
-                    end
-                end
-                VERIF : begin
-                    count_n_aux <= count_aux;
-                    if (z_normalized < TWO_POS && z_normalized > TWO_NEG) begin
-                        completed  <= 1'b1;
-                        next_state <= IDLE;
-                    end else begin
-                        z_aux      <= z_normalized;
-                        completed  <= 1'b0;
-                        next_state <= NORMALIZE;
-                    end
-                end
-                NORMALIZE : begin            
-                    z_normalized <= z_aux >>> 1; // divide por 2
-                    count_aux    <= count_n_aux + 1; //soma 1 ao contador de divisões
-                    completed    <= 1'b0;
-                    next_state   <= VERIF;
-                end
-                default : begin
-                    z_normalized <= {INTERNAL_WIDTH{1'b0}};
-                    z_aux        <= {INTERNAL_WIDTH{1'b0}};
-                    count_aux    <= 0;
-                    count_n_aux  <= 0;
-                    completed    <= 1'b0;
-                end
-            endcase
-        end
-    end
-
-    assign z_out     = z_normalized;
-    assign done      = completed;
-    assign count_div = count_n_aux;
-endmodule
-
-module correcao_quadrante_pi_4_q16_32 #(
-    parameter WIDTH = 32, // Tamanho dos dados de entrada (Q16.16)
-    parameter INTERNAL_WIDTH = 48 // Tamanho dos dados internos e saída (Q16.32)
-) (
-    input clk,
-    input rst,
-    input enable,
-    input signed [WIDTH-1:0] z_in, // Entrada em Q16.16
-    output signed [INTERNAL_WIDTH-1:0] z_out, // Saída em Q16.32
-    output signed [2:0] quadrante,
-    output done
-);
-
-    localparam START     = 3'b000;
-    localparam VERIF     = 3'b001;
-    localparam MAIOR     = 3'b010;
-    localparam MENOR     = 3'b011;
-    localparam VERIF_2   = 3'b100;
-    localparam CORQUAD   = 3'b101;
-
-    localparam FRACTIONAL_BITS = 32;
-
-    localparam signed [INTERNAL_WIDTH-1:0] _360_2PI     = 48'sd26986075409;  // 2π ≈ 6.283185307 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _225_NEG     = -48'sd16866297130; // ≈ -3.926990817 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _225_POS     = 48'sd16866297130;  // ≈ 3.926990817 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _45_PI_4_POS = 48'sd3373259426;   // π/4 ≈ 0.785398163 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _45_PI_4_NEG = -48'sd3373259426;  // π/4 ≈ -0.785398163 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _135_3PI_4   = 48'sd10119778278;  // 3π/4 ≈ 2.356194490 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _90_PI_2     = 48'sd6746518852;   // π/2 ≈ 1.570796327 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _180_PI      = 48'sd13493037704;  // π   ≈ 3.141592654 * 2^32
-    localparam signed [INTERNAL_WIDTH-1:0] _315_5_5     = 48'sd23623350920;  // ≈ 5.50024 * 2^32
-
-    reg [2:0] state, next_state;
-    reg signed [INTERNAL_WIDTH-1:0] z_aux, z_tratado, z_normalizado;
-    reg signed [2:0] quad_in;
-    reg completed;
-
-    always @(*) begin
-        if (rst) begin
-            state <= START;
-        end else 
-            state <= next_state;
-    end
-
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            z_tratado <= 0;
-            next_state <= START;
-            z_normalizado <= 0;
-            quad_in <= 3'b000;
-            z_aux <= 0;
-            completed <= 1'b0;
-        end else begin
-            next_state <= state;
-            case (state)
-                START : begin
-                    completed <= 1'b0;
-                    if (enable) begin
-                        // Converte z_in (Q16.16) para z_tratado (Q16.32)
-                        z_tratado <= {z_in, {FRACTIONAL_BITS-16{1'b0}}};
-                        next_state <= VERIF;
-                    end else begin
-                        next_state <= START;
-                    end
-                end
-                VERIF : begin
-                    if (z_tratado > _360_2PI) begin
-                        next_state <= MAIOR;
-                    end else if (z_tratado < 0 && z_tratado < _45_PI_4_NEG) begin // Verifica se é negativo e menor que -45°
-                        next_state <= MENOR;
-                    end else if (z_tratado > _315_5_5 && z_tratado <= _360_2PI) begin
-                        z_normalizado <= z_tratado - _360_2PI;
-                        next_state <= CORQUAD;
-                    end else begin
-                        z_normalizado <= z_tratado;
-                        next_state <= CORQUAD;
-                    end
-                end
-                MAIOR : begin
-                    z_normalizado <= z_tratado - _360_2PI;
-                    next_state <= VERIF_2;
-                end
-                MENOR : begin
-                    z_normalizado <= z_tratado + _360_2PI;
-                    next_state <= VERIF_2;
-                end 
-                VERIF_2 : begin
-                    if (z_normalizado > _360_2PI) begin
-                        z_tratado <= z_normalizado;
-                        next_state <= VERIF;
-                    end else if (z_normalizado < 0 && z_normalizado < _45_PI_4_NEG) begin
-                        z_tratado <= z_normalizado;
-                        next_state <= VERIF;
-                    end else begin
-                        next_state <= CORQUAD;
-                    end
-                end
-                CORQUAD : begin
-                    if (z_normalizado > _45_PI_4_POS && z_normalizado <= _135_3PI_4) begin // maior que 45° e menor ou igual a 135° 
-                        z_aux <= z_normalizado - _90_PI_2; // θ° - 90°
-                        quad_in <= 3'b001;                        
-                    end else if (z_normalizado > _135_3PI_4 && z_normalizado <= _180_PI) begin // maior que 135° e menor ou igual a 180° 
-                        z_aux <= z_normalizado - _180_PI; // θ° - 180°
-                        quad_in <= 3'b010;                        
-                    end else if (z_normalizado > _180_PI && z_normalizado <= _225_POS) begin // maior que 180° e menor ou igual a 225° 
-                        z_aux <= z_normalizado + _180_PI - _360_2PI; // θ° + 180° - 360°
-                        quad_in <= 3'b011;                        
-                    end else if (z_normalizado > _225_POS && z_normalizado <= _315_5_5) begin // maior que 225° e menor ou igual a 315° 
-                        z_aux <= z_normalizado + _90_PI_2 - _360_2PI; // θ° + 90° - 360°
-                        quad_in <= 3'b100;
-                    end else begin // entre -45° e 45° (ou equivalente)
-                        z_aux <= z_normalizado; // não há alteração
-                        quad_in <= 3'b000;
-                    end
-                    completed <= 1'b1; // Concluiu a correção
-                    next_state <= START;
-                end
-                default : begin
-                    next_state <= START;
-                    completed <= 1'b0;
-                end
-            endcase
-        end
-    end
-
-    // Saídas
-    assign quadrante = quad_in;
-    assign z_out     = z_aux;
-    assign done      = completed;
 
 endmodule

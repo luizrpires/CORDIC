@@ -6,42 +6,42 @@ module correcao_quadrante_pi_4 #(
     input enable,
     input signed [WIDTH-1:0] z_in,
     output signed [WIDTH-1:0] z_out,
-    output signed [2:0] quadrante,
+    output [2:0] quadrante,
     output done
 );
 
-    localparam START = 3'b000;
-    localparam VERIF = 3'b001;
-    localparam MAIOR = 3'b010;
-    localparam MENOR = 3'b011;
+    localparam START   = 3'b000;
+    localparam VERIF   = 3'b001;
+    localparam MAIOR   = 3'b010;
+    localparam MENOR   = 3'b011;
     localparam VERIF_2 = 3'b100;
     localparam CORQUAD = 3'b101;
 
-    localparam signed [31:0] _360_2PI     = 32'sd411775;   // 2π ≈ 6.28302
-    localparam signed [31:0] _225_NEG     = -32'sd257359;  // ≈ -3.92883
-    localparam signed [31:0] _225_POS     = 32'sd257359;   // ≈ 3.92883 225°
-    localparam signed [31:0] _45_PI_4_POS = 32'sd51472;    // π/4 ≈ 0.78540
-    localparam signed [31:0] _45_PI_4_NEG = -32'sd51472;   // -π/4 ≈ -0.78540
-    localparam signed [31:0] _135_3PI_4   = 32'sd154416;   // 3π/4 ≈ 2.35620
-    localparam signed [31:0] _90_PI_2     = 32'sd102944;   // π/2 ≈ 1.57106
-    localparam signed [31:0] _180_PI      = 32'sd205887;   // π    ≈ 3.14154
-    localparam signed [31:0] _315_5_5     = 32'sd360303;   // ≈ 5.50024
-    localparam signed [31:0] _ZERO        = 32'd0;        // 0
+    localparam signed [WIDTH-1:0] _360_2PI     = 32'sd411775;   // 2π ≈ 6.28302
+    localparam signed [WIDTH-1:0] _225_NEG     = -32'sd257359;  // ≈ -3.92883
+    localparam signed [WIDTH-1:0] _225_POS     = 32'sd257359;   // ≈ 3.92883 225°
+    localparam signed [WIDTH-1:0] _45_PI_4_POS = 32'sd51472;    // π/4 ≈ 0.78540
+    localparam signed [WIDTH-1:0] _45_PI_4_NEG = -32'sd51472;   // -π/4 ≈ -0.78540
+    localparam signed [WIDTH-1:0] _135_3PI_4   = 32'sd154416;   // 3π/4 ≈ 2.35620
+    localparam signed [WIDTH-1:0] _90_PI_2     = 32'sd102944;   // π/2 ≈ 1.57106
+    localparam signed [WIDTH-1:0] _180_PI      = 32'sd205887;   // π    ≈ 3.14154
+    localparam signed [WIDTH-1:0] _315_5_5     = 32'sd360303;   // ≈ 5.50024
+    localparam signed [WIDTH-1:0] _ZERO        = 32'd0;         // 0
     
 
     reg [2:0] state, next_state;
     reg signed [WIDTH-1:0] z_aux, z_tratado, z_normalizado;
-    reg signed [2:0] quad_in;
+    reg [2:0] quad_in;
     reg completed;
 
-    always @(posedge clk or posedge rst) begin
+    always @(*) begin
         if (rst) begin
             state <= START;
         end else 
             state <= next_state;
     end
 
-    always @(*) begin
+    always @(posedge clk or posedge rst) begin
         if (rst) begin
             z_tratado <= 0;
             next_state <= START;

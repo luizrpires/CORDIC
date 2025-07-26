@@ -3,7 +3,7 @@
 module tb_top_level_calc_cordic;
 
     parameter WIDTH = 32;
-    parameter ITERATIONS = 16;
+    parameter ITERATIONS = 30;
     parameter ERROR_THRESHOLD = 0.1;  // Margem de erro permitida
 
     reg clk, rst, enable;
@@ -24,16 +24,16 @@ module tb_top_level_calc_cordic;
                 COSH    = 4'b0111, //7 para Cosseno Hiperbólico
                 ATANH   = 4'b1000, //8 para Arc Tangente Hiperbólico
                 MODH    = 4'b1001, //9 para Módulo Hiperbólico
-                //EXP     = 4'b1010, //10 para Exponencial
-                //LOG     = 4'b1011, //11 para Logaritmo
-                //SQRT    = 4'b1100, //12 para Raiz Quadrada
+                //      = 4'b1010, //10 para 
+                //      = 4'b1011, //11 para 
+                //      = 4'b1100, //12 para  
                 //      = 4'b1101, //13 para 
                 //      = 4'b1110, //14 para 
                 DEFAULT = 4'b1111; // Padrão/Sem uso
 
     // Variáveis para leitura do arquivo
-    integer file, r, grau;
-    real angle_rad, seno_ref, cos_ref, atan_ref, xin, zin, mult_ref, yin, div_ref, zhin, sinh_ref, cosh_ref,mag_ref;
+    integer file, r, file_handle;
+    real grau, angle_rad, xin, zin, yin, result_ref;
     
     // String temporária para formatação
     reg [8*40:1] nome_op_temp;
@@ -42,9 +42,8 @@ module tb_top_level_calc_cordic;
     integer error_count = 0;
 
     top_level_calc_cordic #(
-        .WIDTH(WIDTH),
         .ITERATIONS(ITERATIONS)
-    ) dut (
+    ) top_level (
         .clk(clk),
         .rst(rst),
         .enable(enable),
@@ -58,6 +57,17 @@ module tb_top_level_calc_cordic;
 
     initial clk = 0;
     always #5 clk = ~clk;
+
+    initial begin
+        // Abre o arquivo para escrita. O "w" significa write (escrita).
+        // Se o arquivo não existir, ele será criado. Se existir, será sobrescrito.
+        file_handle = $fopen("log_erros_testes.txt", "w"); 
+        if (file_handle == 0) begin // Verifica se o arquivo foi aberto com sucesso
+            $display("ERRO: Não foi possível abrir o arquivo 'log_erros_testes.txt'");
+            $stop; // Para a simulação se não puder abrir o arquivo
+        end
+        $fdisplay(file_handle, "--- Log de Testes de Operações ---"); // Escreve um cabeçalho no arquivo
+    end
 
     task testar;
         input [3:0] op;
@@ -83,12 +93,19 @@ module tb_top_level_calc_cordic;
             // Calcula o erro absoluto
             error = (r_result > ref_val) ? (r_result - ref_val) : (ref_val - r_result);
             
-            // Mostra apenas se erro > threshold
             if (error > ERROR_THRESHOLD) begin
-                $display("ERRO em %s: Esperado=%f, Obtido=%f (Erro=%f)", 
-                        nome_op, ref_val, r_result, error);
+                $fdisplay(file_handle, "ERRO em %s: Esperado=%f, Obtido=%f (Erro=%f)", // armazenar em um arquivo txt
+                                    nome_op, ref_val, r_result, error);
+                $display("ERRO em %s: Esperado=%f, Obtido=%f (Erro=%f)", // apenas mostrar no console
+                                     nome_op, ref_val, r_result, error);
                 error_count = error_count + 1;
+            end else begin
+                $fdisplay(file_handle, "ACERTO em %s: Esperado=%f, Obtido=%f (Erro=%f)", // armazenar em um arquivo txt
+                                    nome_op, ref_val, r_result, error);
+                //$display("ACERTO em %s: Esperado=%f, Obtido=%f (Erro=%f)", // apenas mostrar no console
+                //                   nome_op, ref_val, r_result, error);
             end
+
         end
     endtask
 
@@ -100,10 +117,56 @@ module tb_top_level_calc_cordic;
         operation = DEFAULT;
         #20 rst = 0;
 
-        $display("=== Iniciando testes (mostrando apenas erros > %f) ===", ERROR_THRESHOLD);
-/*
-        // Abre o arquivo de teste seno e coseno         //range -90-90º teste 1000 -ok
-        file = $fopen("tabela_seno_coseno.txt","r");
+        //testar(MULT, 3.0, 0.0, 5.0, nome_op_temp, 15.0); 
+        //testar(MULT, 4.0, 0.0, 6.0, nome_op_temp, 24.0); 
+
+        $display("=== Iniciando testes (mostrando apenas erros > %f) ===", ERROR_THRESHOLD);        
+
+        // Abre o arquivo de teste seno
+        file = $fopen("test_cases_sin.txt","r");
+        if (file == 0) begin 
+            $display("Erro ao abrir tabela"); 
+            $finish; 
+        end
+
+        // Lê e testa cada linha da tabela
+        while (!$feof(file)) begin
+           r = $fscanf(file,"%f,%f,%f,%f,%f\n",
+           grau, xin, yin, zin, result_ref);
+            
+            if (r == 5) begin  // Verifica se leu todos os valores
+                // Teste do SENO
+                $sformat(nome_op_temp, "SENO(%f)", grau);
+                testar(SIN, xin, yin, zin, nome_op_temp, result_ref);
+                #10;                                                    
+            end
+        end
+        $fclose(file);
+        #20;
+
+        // Abre o arquivo de teste cosseno
+        file = $fopen("test_cases_cos.txt","r");
+        if (file == 0) begin 
+            $display("Erro ao abrir tabela"); 
+            $finish; 
+        end
+
+        while (!$feof(file)) begin
+           r = $fscanf(file,"%f,%f,%f,%f,%f\n",
+           grau, xin, yin, zin, result_ref);
+            
+            if (r == 5) begin  // Verifica se leu todos os valores                
+                // Teste do COSSENO
+                $sformat(nome_op_temp, "COSSENO(%f)", grau);
+                testar(COS, xin, yin, zin, nome_op_temp, result_ref);
+                #10;                                                       
+            end
+        end
+        $fclose(file);
+        #20;
+
+        // Abre o arquivo de teste multiplicação       
+        file = $fopen("test_cases_mult.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -112,47 +175,20 @@ module tb_top_level_calc_cordic;
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
            r = $fscanf(file,"%f,%f,%f,%f\n",
-           grau, angle_rad, seno_ref, cos_ref);
+           xin, yin, zin, result_ref);
             
-            if (r == 4) begin  // Verifica se leu todos os 4 valores
-                // Teste do SENO
-                $sformat(nome_op_temp, "SENO(%0d)", grau);
-                testar(SIN, 0.0, 0.0, angle_rad, nome_op_temp, seno_ref);
-                #10;
-                
-                // Teste do COSSENO
-                $sformat(nome_op_temp, "COSSENO(%0d)", grau);
-                testar(COS, 0.0, 0.0, angle_rad, nome_op_temp, cos_ref);
-                #10;                                                       
-            end
-        end
-        $fclose(file);
-        #200;
-
-        // Abre o arquivo de teste multiplicação         //teste 1000 -ok
-        file = $fopen("tabela_multiplicacao.txt","r");
-        if (file == 0) begin 
-            $display("Erro ao abrir tabela"); 
-            $finish; 
-        end
-
-        // Lê e testa cada linha da tabela
-        while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f,%f\n",
-           xin, zin, mult_ref);
-            
-            if (r == 3) begin  // Verifica se leu todos os 3 valores
+            if (r == 4) begin  // Verifica se leu todos os valores
                  // Teste da MULTIPLICAÇÃO
                 $sformat(nome_op_temp, "MULT(%f x %f)", xin, zin);
-                testar(MULT, xin, 0.0, zin, nome_op_temp, mult_ref);
+                testar(MULT, xin, yin, zin, nome_op_temp, result_ref);
                 #10;
                 end
             end
         $fclose(file);
-        #200;
+        #20;
 
-        // Abre o arquivo de teste divição      // erro ainda
-        file = $fopen("tabela_divisaoo.txt","r");
+        // Abre o arquivo de teste divisão      
+        file = $fopen("test_cases_div.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -160,21 +196,21 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f,%f\n",
-           xin, yin, div_ref);
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           yin, xin, zin, result_ref);
             
-            if (r == 3) begin  // Verifica se leu todos os 3 valores
-                // Teste da DIVIÇÃO
+            if (r == 4) begin  // Verifica se leu todos os valores
+                // Teste da DIVISÃO
                 $sformat(nome_op_temp, "DIV(%f / %f)", yin, xin);
-                testar(DIV, xin, yin, 0.0, nome_op_temp, div_ref);
-                #100;
+                testar(DIV, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
                 end
             end
         $fclose(file);
-        #200;
+        #20;
 
-        // Abre o arquivo de teste artangente         //teste 1000 -ok
-        file = $fopen("tabela_tangente.txt","r");
+        // Abre o arquivo de módulo / magnitude   
+        file = $fopen("test_cases_mod.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -182,21 +218,43 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f,%f\n",
-           xin, yin, atan_ref);
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
             
-            if (r == 3) begin  // Verifica se leu todos os 3 valores
+            if (r == 4) begin  // Verifica se leu todos os valores
+                // Teste da modulo/magnitude
+                $sformat(nome_op_temp, "MOD(%f / %f)", xin, yin);
+                testar(MOD, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
+                end
+            end
+        $fclose(file);
+        #20;     
+
+        // Abre o arquivo de teste arcotangente        
+        file = $fopen("test_cases_atan.txt","r");
+        if (file == 0) begin 
+            $display("Erro ao abrir tabela"); 
+            $finish; 
+        end
+
+        // Lê e testa cada linha da tabela
+        while (!$feof(file)) begin
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
+            
+            if (r == 4) begin  // Verifica se leu todos os valores
                 // Teste da ARC TANGENTE
-                $sformat(nome_op_temp, "ATAN(%f / %f)", yin, xin);
-                testar(ATAN, xin, yin, 0.0, nome_op_temp, atan_ref);
-                #100;
+                $sformat(nome_op_temp, "ATAN(%f / %f)", xin, yin);
+                testar(ATAN, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
                 end
             end
         $fclose(file);
-        #200;     
-       
-        //Abre o arquivo de teste seno Hiperbolico              //teste 1000 -ok
-        file = $fopen("tabela_seno_hiperbolico.txt","r");
+        #20;     
+ 
+        //Abre o arquivo de teste seno Hiperbolico     
+        file = $fopen("test_cases_sinh.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -204,23 +262,22 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f\n",
-           zhin, sinh_ref);
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
             
-            if (r == 2) begin  // Verifica se leu todos os 2 valores
+            if (r == 4) begin  // Verifica se leu todos os valores
                 // Seno hiperbólico: sinh(1) ≈ 1.1752
-                $sformat(nome_op_temp, "SINH(%f)", zhin);
-                testar(SINH, 0.0, 0.0, zhin, nome_op_temp, sinh_ref);
-                #100;
+                $sformat(nome_op_temp, "SINH(%f)", zin);
+                testar(SINH, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
                 end                     
             end
         $fclose(file);
-        #200;
-        */
-        
-/*
-         // Abre o arquivo de teste coseno Hiperbolico    //teste 1000 -ok
-        file = $fopen("tabela_coseno_hiperbolico.txt","r");
+        #20;
+    
+
+         // Abre o arquivo de teste coseno Hiperbolico 
+        file = $fopen("test_cases_cosh.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -228,23 +285,22 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f\n",
-           zin, cosh_ref);
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
             
-            if (r == 2) begin  // Verifica se leu todos os 2 valores     
+            if (r == 4) begin  // Verifica se leu todos os valores     
                 // Cosseno hiperbólico: cosh(1) ≈ 1.5430
-                $sformat(nome_op_temp, "COSH(%f)", zhin);
-                testar(COSH, 0.0, 0.0, zhin, nome_op_temp, cosh_ref);
-                #100;  
+                $sformat(nome_op_temp, "COSH(%f)", zin);
+                testar(COSH, xin, yin, zin, nome_op_temp, result_ref);
+                #10;  
                 end
             end
         $fclose(file);
-        #100;
+        #20;
 
-      */
-        
-        // Abre o arquivo de teste magnitude     // com erro 
-        file = $fopen("tabela_magnitude.txt","r");
+
+        // Abre o arquivo de teste tangente hiperbolica     
+        file = $fopen("test_cases_atanh.txt","r");
         if (file == 0) begin 
             $display("Erro ao abrir tabela"); 
             $finish; 
@@ -252,18 +308,41 @@ module tb_top_level_calc_cordic;
 
         // Lê e testa cada linha da tabela
         while (!$feof(file)) begin
-           r = $fscanf(file,"%f,%f,%f\n",
-           xin, yin, mag_ref);
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
             
-            if (r == 3) begin  // Verifica se leu todos os 3 valores
-                // Teste da ARC TANGENTE
-                $sformat(nome_op_temp, "MOD(%f - %f)", yin, xin);
-                testar(MOD, xin, yin, 0.0, nome_op_temp, mag_ref);
-                #100;
+            if (r == 4) begin  // Verifica se leu todos os valores
+                // Teste da ARC TANGENTE hiperbólico
+                $sformat(nome_op_temp, "ATANH(%f - %f)", xin, yin);
+                testar(ATANH, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
                 end
             end
         $fclose(file);
-        #200;
+        #20;
+
+        // Abre o arquivo de teste magnitude hiperbolico   
+        file = $fopen("test_cases_modh.txt","r");
+        if (file == 0) begin 
+            $display("Erro ao abrir tabela"); 
+            $finish; 
+        end
+
+        // Lê e testa cada linha da tabela
+        while (!$feof(file)) begin
+
+           r = $fscanf(file,"%f,%f,%f,%f\n",
+           xin, yin, zin, result_ref);
+            
+            if (r == 4) begin  // Verifica se leu todos os valores
+                // Teste da modulo hiperbólico
+                $sformat(nome_op_temp, "MODH(%f - %f)", xin, yin);
+                testar(MODH, xin, yin, zin, nome_op_temp, result_ref);
+                #10;
+            end
+        end
+        $fclose(file);
+        #20;
 
         // Mostra resultado final caso de sucesso
         if (error_count == 0) begin
@@ -275,8 +354,14 @@ module tb_top_level_calc_cordic;
             $display(" ATENCÃO: %0d erros encontrados", error_count);
             $display("====================================\n");
         end
+        
+        // Fecha o arquivo quando a simulação termina
+        if (file_handle != 0) begin
+            $fclose(file_handle);
+            $display("=== Fim dos testes ===");           
+            $display("Log de testes salvo em 'log_erros_testes.txt'");
+        end
 
-        $display("=== Fim dos testes ===");
         $stop;
     end
 

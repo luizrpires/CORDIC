@@ -1,17 +1,23 @@
 module top_level_calc_cordic #(
-    parameter ITERATIONS = 16, //quantidade de iterações
-    parameter WIDTH = 32 //tamanho dos dados de entrada e saída
+    parameter ITERATIONS = 16 //quantidade de iterações
 )(
-    input clk,
-    input rst,
-    input enable,
-    input [3:0] operation,
-    input signed [WIDTH-1:0] x_in,
-    input signed [WIDTH-1:0] y_in,
-    input signed [WIDTH-1:0] z_in,
-    output signed [WIDTH-1:0] result,
-    output done
+    clk, rst, enable, 
+    operation, 
+    x_in, y_in, z_in,
+    result,
+    done
 );
+    localparam WIDTH = 32; //tamanho dos dados de entrada e saída
+
+    input clk;
+    input rst;
+    input enable;
+    input [3:0] operation;
+    input signed [WIDTH-1:0] x_in;
+    input signed [WIDTH-1:0] y_in;
+    input signed [WIDTH-1:0] z_in;
+    output signed [WIDTH-1:0] result;
+    output done;
 
     //MODO COORDENADA
     localparam  CIRCULAR   = 2'b01, //1 para Circular
@@ -33,18 +39,18 @@ module top_level_calc_cordic #(
                 COSH    = 4'b0111, //7 para Cosseno Hiperbólico
                 ATANH   = 4'b1000, //8 para Arc Tangente Hiperbólico
                 MODH    = 4'b1001, //9 para Módulo Hiperbólico
-                //EXP     = 4'b1010, //10 para Exponencial
-                //LOG     = 4'b1011, //11 para Logaritmo
-                //SQRT    = 4'b1100, //12 para Raiz Quadrada
+                //      = 4'b1010, //10 para 
+                //      = 4'b1011, //11 para 
+                //      = 4'b1100, //12 para  
                 //      = 4'b1101, //13 para 
                 //      = 4'b1110, //14 para 
                 DEFAULT = 4'b1111; // Padrão/Sem uso
 
     
-    localparam K_INV_CIRCULAR   = 32'd39797;    // 1 / 1.64676 = 0.6072529350088813 * 2^16
-    localparam K_CIRCULAR       = 32'd107936;   // 1.646760258121066 * 2^16
-    localparam K_INV_HYPERBOLIC = 32'd79134;    // 1 / 0.82816 = 1.2074970677630726 * 2^16
-    localparam K_HYPERBOLIC     = 32'd54275;    // 0.8281593606 * 2^16
+    localparam signed [WIDTH-1:0] K_INV_CIRCULAR   = 32'sd39797;    // 1 / 1.64676 = 0.6072529350088813 * 2^16
+    localparam signed [WIDTH-1:0] K_CIRCULAR       = 32'sd107936;   // 1.646760258121066 * 2^16
+    localparam signed [WIDTH-1:0] K_INV_HYPERBOLIC = 32'sd79134;    // 1 / 0.82816 = 1.2074970677630726 * 2^16
+    localparam signed [WIDTH-1:0] K_HYPERBOLIC     = 32'sd54275;    // 0.8281593606 * 2^16
 
     reg [1:0] mode_coord;
     reg mode_op; // (0 para Rotação, 1 para Vetorização)
@@ -54,21 +60,21 @@ module top_level_calc_cordic #(
     wire signed [WIDTH-1:0] x_out, y_out, z_out;
     wire valid;
 
+    //INSTANCIA DA ARQUITETURA 
     cordic_parallel_q16_32 #(
     //cordic_parallel #(
     //cordic_q16_32 #(
     //cordic #(
-        .ITERATIONS(ITERATIONS), 
-        .WIDTH(WIDTH) 
+        .ITERATIONS(ITERATIONS) 
     ) ins_cordic (
         .clk(clk),
         .rst(rst),
-        .enable(enable),
-        .mode_op(mode_op),
-        .mode_coord(mode_coord), 
+        .enable(enable), 
         .x_in(x_aux),
         .y_in(y_aux),
         .z_in(z_aux),
+        .mode_op(mode_op),
+        .mode_coord(mode_coord),
         .x_out(x_out),
         .y_out(y_out),
         .z_out(z_out),
@@ -77,27 +83,25 @@ module top_level_calc_cordic #(
 
     always @(*) begin
         if (rst) begin
-            //mode_coord <= ; // Padrão
-            //mode_op    <= ; // Padrão
-            x_aux        <= 32'b0;
-            y_aux        <= 32'b0;
-            z_aux        <= 32'b0;
+            x_aux <= 32'b0;
+            y_aux <= 32'b0;
+            z_aux <= 32'b0;
         end else begin
             case (operation)
                 // CIRCULAR + ROTATION
                 SIN: begin
                     mode_coord <= CIRCULAR;
                     mode_op    <= ROTATION;
-                    x_aux      <= 0.0;
-                    y_aux      <= 0.0;
+                    x_aux      <= 32'b0;
+                    y_aux      <= 32'b0;
                     z_aux      <= z_in;
                 end
 
                 COS: begin
                     mode_coord <= CIRCULAR;
                     mode_op    <= ROTATION;
-                    x_aux      <= 0.0;
-                    y_aux      <= 0.0;
+                    x_aux      <= 32'b0;
+                    y_aux      <= 32'b0;
                     z_aux      <= z_in;
                 end
                 //////////////////////
@@ -108,7 +112,7 @@ module top_level_calc_cordic #(
                     mode_op    <= VECTORING;
                     x_aux      <= x_in;
                     y_aux      <= y_in;
-                    z_aux      <= 0.0;
+                    z_aux      <= 32'b0;
                 end
                 ///////////////////////
 
@@ -136,16 +140,16 @@ module top_level_calc_cordic #(
                 SINH: begin
                     mode_coord <= HYPERBOLIC;
                     mode_op    <= ROTATION;
-                    x_aux      <= 0.0;
-                    y_aux      <= 0.0;
+                    x_aux      <= 32'b0;
+                    y_aux      <= 32'b0;
                     z_aux      <= z_in;
                 end
                 
                 COSH: begin
                     mode_coord <= HYPERBOLIC;
                     mode_op    <= ROTATION;
-                    x_aux      <= 0.0;
-                    y_aux      <= 0.0;
+                    x_aux      <= 32'b0;
+                    y_aux      <= 32'b0;
                     z_aux      <= z_in;
                 end
                 ////////////////////////
@@ -156,17 +160,14 @@ module top_level_calc_cordic #(
                     mode_op    <= VECTORING;
                     x_aux      <= x_in;
                     y_aux      <= y_in;
-                    z_aux      <= 0.0;
+                    z_aux      <= 32'b0;
                 end
-                /////////////////////////
-                
+                /////////////////////////            
 
                 default: begin
-                    //mode_coord <= ; // Padrão
-                    //mode_op    <= ; // Padrão
-                    x_aux        <= 32'sb0;
-                    y_aux        <= 32'sb0;
-                    z_aux        <= 32'sb0;
+                    x_aux <= 32'b0;
+                    y_aux <= 32'b0;
+                    z_aux <= 32'b0;
                 end
             endcase
         end
@@ -175,37 +176,59 @@ module top_level_calc_cordic #(
     always @(*) begin
         if (rst) begin
             completed  <= 1'b0;
-            result_aux <= 32'sb0;
+            result_aux <= 32'b0;
         end else begin
             if (valid) begin
                 case (operation) 
                     //CIRCULAR
-                    SIN:  result_aux <= y_out;
-                    COS:  result_aux <= x_out;
-                    MOD:  result_aux <= x_out;
-                    ATAN: result_aux <= z_out;
+                    SIN:begin
+                        result_aux <= y_out;
+                    end
+                      
+                    COS: begin
+                        result_aux <= x_out;
+                    end
+                    
+                    MOD: begin
+                        result_aux <= x_out;                        
+                    end 
+
+                    ATAN: begin
+                        result_aux <= z_out;
+                    end 
 
                     //LINEAR
-                    MULT: result_aux <= y_out;
-                    DIV:  result_aux <= z_out;
+                    MULT: begin
+                        result_aux <= y_out;                       
+                    end 
+                    DIV: begin
+                        result_aux <= z_out;
+                    end  
 
                     //HIPERBÓLICO
-                    SINH:  result_aux <= y_out;
-                    COSH:  result_aux <= x_out;
-                    MODH:  result_aux <= x_out;
-                    ATANH: result_aux <= z_out;
+                    SINH: begin
+                        result_aux <= y_out;
+                    end 
+                    COSH: begin
+                        result_aux <= x_out;
+                    end
+                    MODH: begin
+                        result_aux <= x_out;                    
+                    end 
+                    ATANH: begin
+                        result_aux <= z_out;
+                    end 
 
-                    default: result_aux <= 32'sb0;
+                    default: result_aux <= 32'b0;
                 endcase
                 completed <= 1'b1;
             end else begin 
                 completed  <= 1'b0;
-                result_aux <= 32'sb0;
+                result_aux <= 32'b0;
             end
         end 
     end
 
     assign result = result_aux;
-    assign done   = completed;
-    
+    assign done   = completed;    
 endmodule

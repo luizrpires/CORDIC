@@ -1,12 +1,13 @@
-module corr_z_multi #(
-    parameter WIDTH = 32 //tamanho dos dados de entrada e saída
+module corr_z_multi_q16_32 #(
+    parameter WIDTH = 32, // Tamanho dos dados de entrada (Q16.16)
+    parameter INTERNAL_WIDTH = 48 // Tamanho dos dados internos e saída (Q16.32)
 )(
     input clk,
     input rst,
     input enable,
-    input signed [WIDTH-1:0] z_in,
-    output signed [WIDTH-1:0] z_out,
-    output [3:0] count_div,
+    input signed [WIDTH-1:0] z_in, // Entrada em Q16.16
+    output signed [INTERNAL_WIDTH-1:0] z_out, // Saída em Q16.32
+    output [3:0] count_div, 
     output done
 );
 
@@ -14,14 +15,15 @@ module corr_z_multi #(
     localparam VERIF     = 2'b01;
     localparam NORMALIZE = 2'b10;
     
-    localparam signed [WIDTH-1:0] ONE_POS = 32'sd65536;
-    localparam signed [WIDTH-1:0] ONE_NEG = -32'sd65536;
-    localparam signed [WIDTH-1:0] TWO_POS = 32'sd131072;
-    localparam signed [WIDTH-1:0] TWO_NEG = -32'sd131072;
+    localparam FRACTIONAL_BITS = 32;
+    localparam signed [INTERNAL_WIDTH-1:0] ONE_POS = 48'sd4294967296;  // 1.0 * 2^32
+    localparam signed [INTERNAL_WIDTH-1:0] ONE_NEG = -48'sd4294967296; // -1.0 * 2^32
+    localparam signed [INTERNAL_WIDTH-1:0] TWO_POS = 48'sd8589934592;  // 2.0 * 2^32
+    localparam signed [INTERNAL_WIDTH-1:0] TWO_NEG = -48'sd8589934592; // -2.0 * 2^32
 
     reg [1:0] state, next_state;
-    reg signed [WIDTH-1:0] z_aux, z_normalized; 
-    reg [3:0] count_aux, count_n_aux;
+    reg signed [INTERNAL_WIDTH-1:0] z_aux, z_normalized; 
+    reg [3:0] count_aux, count_n_aux; 
     reg completed;
 
     always @(*) begin
@@ -35,23 +37,23 @@ module corr_z_multi #(
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             next_state   <= IDLE;
-            z_normalized <= 0;
-            z_aux        <= 0;
+            z_normalized <= {INTERNAL_WIDTH{1'b0}};
+            z_aux        <= {INTERNAL_WIDTH{1'b0}};
             count_aux    <= 0;
             count_n_aux  <= 0;
             completed    <= 1'b0;
         end else begin
             next_state <= state;
             case (state)
-                IDLE : begin
-                    completed    <= 1'b0; 
+                IDLE : begin   
+                    completed   <= 1'b0;       
                     if (enable) begin
-                        z_normalized <= z_in;
+                        z_normalized <= {z_in, {FRACTIONAL_BITS-16{1'b0}}}; 
                         count_aux    <= 0;                       
                         count_n_aux  <= 0;
                         next_state   <= VERIF;
                     end else begin
-                        next_state   <= IDLE;  
+                        next_state   <= IDLE;                        
                     end
                 end
                 VERIF : begin
@@ -65,15 +67,15 @@ module corr_z_multi #(
                         next_state <= NORMALIZE;
                     end
                 end
-                NORMALIZE : begin
+                NORMALIZE : begin            
                     z_normalized <= z_aux >>> 1; // divide por 2
-                    count_aux    <= count_n_aux + 1'b1; //soma 1 ao contador de divisões
+                    count_aux    <= count_n_aux + 1; //soma 1 ao contador de divisões
                     completed    <= 1'b0;
                     next_state   <= VERIF;
                 end
                 default : begin
-                    z_normalized <= 0;
-                    z_aux        <= 0;
+                    z_normalized <= {INTERNAL_WIDTH{1'b0}};
+                    z_aux        <= {INTERNAL_WIDTH{1'b0}};
                     count_aux    <= 0;
                     count_n_aux  <= 0;
                     completed    <= 1'b0;
